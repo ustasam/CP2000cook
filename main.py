@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import sys
+import os
 import logging
 import argparse
 import config
@@ -25,6 +26,7 @@ if __name__ == "__main__":
     subparsers = parser.add_subparsers(dest='command', help='Commands')
 
     main_parser = subparsers.add_parser('main', help='GUI program')
+    main_parser.add_argument('--recipe', '-r', action='store', help='Recipe path')
     main_parser.add_argument('--emulate', action='store_true',
                              help='Emulate instrument')
 
@@ -60,6 +62,14 @@ if __name__ == "__main__":
     logging.info("Main started.")
 
     if args.command == "main":
+
+            if args.recipe is not None:
+                if not os.path.isfile(args.recipe):
+                    print("Error: file \"" + args.recipe + "\" not exist.")
+                    exit(1)
+                    
+                args.recipe = args.recipe.decode(sys.getfilesystemencoding()).encode("utf-8")
+
             if args.emulate:
                 config.emulate_instrument = args.emulate
 
@@ -67,7 +77,7 @@ if __name__ == "__main__":
                 cp2000.CP2000.get_instrument(config.PORT, config.ADDRESS, config.minimalmodbus_mode)
 
             if instrument is not None or config.emulate_instrument:
-                main_gui = program.Main_GUI(instrument)
+                main_gui = program.Main_GUI(instrument, args.recipe)
                 Gtk.main()
             else:
                 logging.error("Нет связи с прибором.")

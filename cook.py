@@ -3,10 +3,13 @@
 import logging
 import time
 import csv
+from lark import Lark
 
 import config
 import helper
 import cp2000 as dev
+import dsl
+import dialog
 
 
 class State(object):
@@ -63,6 +66,7 @@ class Command(object):
         else:
             return "Неизвестно"
 
+
 class CommandLine(object):
     NAME = 1
     MESSAGE = 2
@@ -102,6 +106,11 @@ class Cook(object):
         self.command_end_time = t
 
         self.device = dev.CP2000(instrument)
+
+        self.lark = Lark('''start: WORD "," WORD "!"
+            %import common.WORD
+            %ignore " "
+            ''')
 
     def cp_start(self, freq=None, direction=None):
         self.device.state = dev.CPState.STOPPED
@@ -205,7 +214,7 @@ class Cook(object):
 
         lines = csv.reader(
             textLine, quotechar='"', delimiter=' ',
-             skipinitialspace=True) #quoting=csv.QUOTE_ALL,
+            skipinitialspace=True)  # quoting=csv.QUOTE_ALL,
         items = []
         print(lines[0])
         if len(lines) == 1:
@@ -249,15 +258,42 @@ class Cook(object):
             elif v_arg == "conf_value_2":  # template
                 self.conf2 = v_value
 
-    def readRecipe(self):
-        with open(unicode(self.recipeFile, 'utf-8')) as f:
-            self.recipeText = []
-            for line in f:
-                line = line.strip(' \t\r\n')
-                if line != "":
-                    self.parse_command_line(line)
-                    #self.recipeText.append(line)
-                    #self.recipeIsConfigLine(line)
+    def parse(self, text, gui_message=False, print_pretty=False):
+        parse = None
+        try:
+            parse = dsl.parser.parse(text)
+        except Exception as err:
+            print("Error in recipe file.")
+            print(err)
+            if gui_message:
+                dialog.infoDialog("Ошибка в разборе файла рецепта. \n" + str(err))
+        if print_pretty and (parse is not None):
+            print(parse.pretty())
+            print(parse)
+
+        return parse
+
+    def readRecipe(self, recipe=""):
+
+        self.recipeFile = recipe
+
+        if recipe:
+            with open(unicode(self.recipeFile, 'utf-8')) as f:
+
+                text = unicode(f.read(), 'utf-8')
+
+                p = self.parse(text, True, True)
+
+
+                return
+
+                self.recipeText = []
+                for line in f:
+                    line = line.strip(' \t\r\n')
+                    if line != "":
+                        self.parse_command_line(line)
+                        #self.recipeText.append(line)
+                        #self.recipeIsConfigLine(line)
 
     # --------------------------------------------------------------------------------------------------------
 

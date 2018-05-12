@@ -17,7 +17,7 @@ from gi.repository import Gtk, GObject  # GLib, Gio,
 
 class Main_GUI(object):
 
-    def __init__(self, instrument=None):
+    def __init__(self, instrument=None, recipe=""):
         self.gladefile = config.gladefile
         self.builder = Gtk.Builder()
         self.builder.add_from_file(self.gladefile)
@@ -70,33 +70,30 @@ class Main_GUI(object):
 
         self.cook = cook.Cook(instrument)
 
+        if recipe:
+            self.cook.readRecipe(recipe)
+
         self.ui_update_recipe_name()
         self.ui_update_all()
-        self.ui_recipe.set_text("Рецепт.")
 
         self.window.show()
 
         self.timeout_lock = False
 
     def on_timeout(self, arg):
-        if not self.timeout_lock:  # prevent double exetion
-            self.timeout_lock = True
+        try:
+            if cook.State.is_running(self.cook.state):
 
-            try:
-                if cook.State.is_running(self.cook.state):
+                self.cook.tick()
 
-                    self.cook.tick()
+                self.ui_update()
+                # if int(self.cook.state) & cook.State.MANUAL != 0:
+                self.ui_update_manual() if 1 else 2
+                # elif int(self.cook.state) & cook.State.PROGRAM != 0:
+                #    self.ui_update_recipe()
 
-                    self.ui_update()
-                    # if int(self.cook.state) & cook.State.MANUAL != 0:
-                    self.ui_update_manual() if 1 else 2
-                    # elif int(self.cook.state) & cook.State.PROGRAM != 0:
-                    #    self.ui_update_recipe()
-
-            except Exception as err:
-                logging.error("error on_timeout(): " + str(err))
-
-            self.timeout_lock = False
+        except Exception as err:
+            logging.error("error on_timeout(): " + str(err))
 
         next = 1000 - (time.time() % 1) * 1000
         self.timeout_id = GObject.timeout_add(next, self.on_timeout, None)
@@ -175,8 +172,7 @@ class Main_GUI(object):
             if file != "":
                 # self.cook.stop()
                 logging.info("Selected file " + file)
-                self.cook.recipeFile = file
-                self.cook.readRecipe()
+                self.cook.readRecipe(file)
 
         self.ui_update_recipe_name()
         self.ui_update_all()
@@ -219,6 +215,7 @@ class Main_GUI(object):
         Gtk.main_quit()
 
     def on_manual_execute_clicked(self, widget):
+
         freq = float(self.ui_manual_freq.get_text())
         execution_time = int(self.ui_manual_time.get_text())
         if self.ui_manual_direction.get_active():
@@ -226,7 +223,9 @@ class Main_GUI(object):
         else:
             direction = cp2000.Direction.REV
         period = int(self.ui_manual_direction_time.get_text())
+
         self.cook.manual_execute(direction, freq, execution_time, period)
+
         self.notebook_update_state()
         self.ui_update_manual()
 

@@ -49,3 +49,41 @@ def yesNoDialog(message, parent=None, title="Вопрос."):
         return True
     else:
         return False
+
+
+# def responseToDialog(entry, dialog, response):
+#     print response
+#     dialog.response(response)
+
+# TODO: formatter
+
+def textInputDialog(message, value="", title="", format="", value_message="Значение", parent=None):
+
+    dialog = Gtk.MessageDialog(parent,
+                               Gtk.DialogFlags.MODAL | Gtk.DialogFlags.DESTROY_WITH_PARENT,
+                               Gtk.MessageType.QUESTION,
+                               Gtk.ButtonsType.OK,
+                               None, message, title=title)
+
+    dialog.set_markup(message)
+
+    hbox = Gtk.HBox()
+    hbox.pack_start(Gtk.Label(value_message + ":"), False, 5, 5)
+
+    entry = Gtk.Entry()
+    entry.set_text(value)
+    # entry.connect("activate", responseToDialog, dialog, Gtk.ButtonsType.OK)
+
+    hbox.pack_end(entry, False, 5, 5)
+
+    # dialog.format_secondary_markup("")  # identification
+    dialog.vbox.pack_end(hbox, True, True, 0)
+
+    dialog.show_all()
+    dialog.run()
+
+    text = entry.get_text()
+
+    dialog.destroy()
+
+    return text
