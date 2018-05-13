@@ -116,7 +116,7 @@ class Main_GUI(object):
 
     def ui_update_manual(self):
         self.ui_manual_freq_label.set_text("{0:.1f}".format(self.cook.device.cp_freq_current/100))
-        self.ui_manual_time_label.set_text("{0:.1f}".format(self.cook.recipe_rest_time))
+        self.ui_manual_time_label.set_text("{0:.1f}".format(self.cook.rest_time))
         self.ui_manual_direction_label.set_text(cp2000.Direction.repr(self.cook.device.direction))
         self.ui_manual_direction_time_label.set_text("{0:.1f}".format(self.cook.command_rest_time))
 
@@ -234,3 +234,9 @@ class Main_GUI(object):
 
     def on_device_test2_clicked(self, widget):
         self.cook.reaction_test2()
+
+
+def main(instrument, recipe):
+    main_gui = Main_GUI(instrument, recipe)
+    Gtk.main()
+    main_gui = main_gui

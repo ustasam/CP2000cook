@@ -8,11 +8,6 @@ import argparse
 import config
 import program
 import cp2000
-
-import gi
-gi.require_version('Gtk', '3.0')
-from gi.repository import Gtk  # GLib, Gio,
-
 import dialog
 
 if __name__ == "__main__":
@@ -67,18 +62,18 @@ if __name__ == "__main__":
                 if not os.path.isfile(args.recipe):
                     print("Error: file \"" + args.recipe + "\" not exist.")
                     exit(1)
-                    
+
                 args.recipe = args.recipe.decode(sys.getfilesystemencoding()).encode("utf-8")
 
-            if args.emulate:
-                config.emulate_instrument = args.emulate
+            config.emulate_instrument = (args.emulate or config.emulate_instrument)
 
             instrument = None if config.emulate_instrument else \
                 cp2000.CP2000.get_instrument(config.PORT, config.ADDRESS, config.minimalmodbus_mode)
 
             if instrument is not None or config.emulate_instrument:
-                main_gui = program.Main_GUI(instrument, args.recipe)
-                Gtk.main()
+
+                program.main(instrument, args.recipe)
+
             else:
                 logging.error("Нет связи с прибором.")
                 dialog.infoDialog(

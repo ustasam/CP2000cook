@@ -2,14 +2,12 @@
 
 import logging
 import time
-import csv
-from lark import Lark
+from lark import Lark, Tree
 
 import config
 import helper
 import cp2000 as dev
 import dsl
-import dialog
 
 
 class State(object):
@@ -23,6 +21,10 @@ class State(object):
     @staticmethod
     def is_running(state):
         return (State.RUNNING & state) != 0
+
+    @staticmethod
+    def is_stopped(state):
+        return not State.is_running(state)
 
     @staticmethod
     def is_manual(state):
@@ -50,67 +52,28 @@ class State(object):
             return "Неизвестно"
 
 
-class Command(object):
-    WAIT_OPERATOR = 1
-    EXECUTE = 2
-    UNKNOWN = 99
-
-    @staticmethod
-    def repr(command):
-        if command == Command.WAIT_OPERATOR:
-            return "Ожидание"
-        elif command == Command.EXECUTE:
-            return "Процесс"
-        elif command == Command.UNKNOWN:
-            return "Неизвестно"
-        else:
-            return "Неизвестно"
-
-
-class CommandLine(object):
-    NAME = 1
-    MESSAGE = 2
-    PAUSE = 3
-    BEEP = 4
-    RUN = 5
-    STOP = 6
-    END = 7
-
-    @staticmethod
-    def repr(command):
-        if command == Command.WAIT_OPERATOR:
-            return "Ожидание"
-        elif command == Command.EXECUTE:
-            return "Процесс"
-        elif command == Command.UNKNOWN:
-            return "Неизвестно"
-        else:
-            return "Неизвестно"
-
-
 class Cook(object):
 
     def __init__(self, instrument=None):
         self.recipeName = ""
-        self.recipeFile = ""
-        self.commands = []
-        self.position = 0
 
-        self._state = State.UNKNOWN
-        self._command = Command.UNKNOWN
+        self.recipeFile = ""
+        self.program = None
+
+        self.current_command = None
+
+        self.identifiers = {}
+
+        # execution state
+        self._state = State.STOPPED
 
         t = time.time()
-        self.recipe_start_time = t
-        self.recipe_end_time = t
+        self.start_time = t
+        self.end_time = t
         self.command_start_time = t
         self.command_end_time = t
 
         self.device = dev.CP2000(instrument)
-
-        self.lark = Lark('''start: WORD "," WORD "!"
-            %import common.WORD
-            %ignore " "
-            ''')
 
     def cp_start(self, freq=None, direction=None):
         self.device.state = dev.CPState.STOPPED
@@ -128,20 +91,16 @@ class Cook(object):
         self._state = value
 
     @property
-    def command(self):
-        return self._command
-
-    @command.setter
-    def command(self, value):
-        self._command = value
+    def state_repr(self):
+        return State.repr(self.state)
 
     @property
-    def recipe_execution_time(self):
-        return self.recipe_end_time - self.recipe_start_time
+    def execution_time(self):
+        return self.end_time - self.start_time
 
     @property
-    def recipe_rest_time(self):
-        return self.recipe_end_time - time.time()
+    def rest_time(self):
+        return self.end_time - time.time()
 
     @property
     def command_execution_time(self):
@@ -152,25 +111,117 @@ class Cook(object):
         return self.command_end_time - time.time()
 
     @property
-    def state_str(self):
-        return State.repr(self.state)
+    def is_command_complete(self):
+        return self.command_rest_time <= 0
+
+    def compete_command(self):
+        if not self.is_command_complete:
+            self.command_end_time = time.time()
+
+    def attr(self, node, position, default=None):
+        if len(node.children) > position:
+            return node.children[position].value
+        return default
+
+    def attr_i(self, node, position, default=0):
+        result = int(self.attr(node, position, default))
+        print "v " + str(result)
+        return result
+
+    def next_command(self):
+        cmd = self.current_command
+        if cmd.next:
+            self.current_command = cmd.next
+        else:
+            if hasattr(cmd, 'parent'):
+                self.current_command = cmd.parent
+            else:
+                self.current_command = None
+
+    def execute(self, node, verify_only=False):
+        # 22#self.current = node
+        self.command_start_time = time.time()
+        self.command_end_time = self.command_start_time
+
+        try:
+            if node.data == "program_name":
+                self.recipeName = self.attr(node, 0, "")
+                logging.info("% " + node.data + " " + self.recipeName)
+
+            elif node.data == "beep":
+                sound_freq = self.attr_i(node, 0, 3000)
+                duration = self.attr_i(node, 1, 1000)
+                times = self.attr_i(node, 2, 1)
+                pause_length = self.attr_i(node, 3, 1000)
+
+                if not verify_only:
+                    for i in range(times):
+                        helper.playsound(sound_freq, duration)
+                        if i < (times - 1):
+                            time.sleep(pause_length / 1000)
+                    logging.info("% " + node.data + " " + sound_freq)
+
+            elif node.data == "pause":
+                if not verify_only:
+                    logging.info("% " + node.data)
+
+            elif node.data == "end":
+                if not verify_only:
+                    self.end()
+                    logging.info("% " + node.data)
+
+            elif node.data == "parameter":
+                if not verify_only:
+                    self.identifiers[self.attr(node, 0, "default")] = self.attr(node, 0, 3000)  # &&&???
+                    logging.info("% " + node.data)
+
+            elif node.data == "message":
+                if not verify_only:
+                    logging.info("% " + node.data)
+
+            elif node.data == "repeat":
+                if not verify_only:
+                    logging.info("% " + node.data)
+
+            elif node.data == "expression":
+                if not verify_only:
+                    logging.info("% " + node.data)
+
+            elif node.data == "operate":
+                if not verify_only:
+                    logging.info("% " + node.data)
+
+        except Exception as err:
+            logging.info("Error execute() command: " + node.data + " " + str(err))
+
+        for i in node.children:
+            if isinstance(i, Tree):
+                self.execute(i, verify_only)
 
     def end(self):
         self.device.stop()
         self.state = State.STOPPED
+        logging.info("end()")
 
-    def run(self):
-        self.position = 0
-        self.recipe_start_time = time.time()
-        self.command_start_time = self.recipe_start_time
-        self.state = State.RUNNING
-        self.execute_line()
-        logging.info("start_commands()")
+    def run(self):  # program_execute
+        if not State.is_running(self.state):
+
+            self.state = State.RUNNING
+            self.start_time = time.time()
+            logging.info("run()")
+
+            self.current_command = self.program
+            self.execute(self.program, True)
+#            self.execute(self.program)
 
     def resume(self):
+        if State.is_running(self.state):
+            return
         self.state = State.RUNNING
-        self.execute_line()
-        logging.info("resume_commands()")
+        logging.info("resume()")
+
+    def program_tick(self):
+        pass
 
     def tick(self):
         if self.state == State.MANUAL:
@@ -179,7 +230,7 @@ class Cook(object):
             self.program_tick()
 
     def manual_tick(self):
-        if self.recipe_rest_time > 0:
+        if self.rest_time > 0:
             if self.command_rest_time > 0:
                 pass
             else:
@@ -190,110 +241,31 @@ class Cook(object):
         else:
             self.end()
             self.state == State.COMPLETED
+            logging.info("manual completed")
 
     def manual_execute(self, direction=None, freq=1, execution_time=1, period=0):
+        logging.info("manual_execute()")
         if not State.is_running(self.state):
             self.device.freq = freq
             self.device.direction = direction
-            self.recipe_start_time = time.time()
-            self.command_start_time = self.recipe_start_time
-            self.recipe_end_time = self.recipe_start_time + min(execution_time, config.max_execution_time)
+            self.start_time = time.time()
+            self.command_start_time = self.start_time
+            self.end_time = self.start_time + min(execution_time, config.max_execution_time)
             if period == 0:
-                self.command_end_time = self.recipe_end_time
+                self.command_end_time = self.end_time
             else:
                 self.command_end_time = self.command_start_time + min(period, config.max_execution_time)
             self.state = State.MANUAL
             self.device.start()
 
-    # --------------------------------------------------------------------------------------------------------
-
-    def parse_command_line(self, textLine):
-        commandLine = dict.fromkeys(['command', 'time', 'freq', 'message'])
-
-        print(textLine)
-
-        lines = csv.reader(
-            textLine, quotechar='"', delimiter=' ',
-            skipinitialspace=True)  # quoting=csv.QUOTE_ALL,
-        items = []
-        print(lines[0])
-        if len(lines) == 1:
-            items = lines[0]
-        items.extend([None, None, None, None])
-        commandLine.command = items[0].strip().lover()
-        commandLine.time = float(items[1])
-        commandLine.freq = float(items[2])
-        commandLine.message = items[3].strip()
-        return commandLine
-
-    def get_current_command(self):
-        textLine = self.recipeText[self.position]
-        textLine = textLine.strip(' \t\r\n')
-        commandLine = self.parse_command_line(textLine)
-        return commandLine
-
-    def execute_command(self):
-        self.command_execution_start_time = time.time()
-        if self.position >= len(self.recipeText):
-            self.stop()
-            logging.info("Execution complite.")
-            return
-        # cmd = get_current_command()
-
-        # !!!!if cmd.command == "Пауза":
-        # parse_line()
-
-    def execute_next_command(self):
-        self.position = self.position + 1
-        self.execute_command()
-
-    def recipeIsConfigLine(self, line):
-        v = line.split('=', 1)
-        if len(v) == 2:
-            v_arg = v[0].strip(' \t\r\n\"').lower()
-            v_value = v[1].strip(' \t\r\n\"')
-
-            if v_arg == "name":
-                self.recipeName = v_value
-            elif v_arg == "conf_value_2":  # template
-                self.conf2 = v_value
-
-    def parse(self, text, gui_message=False, print_pretty=False):
-        parse = None
-        try:
-            parse = dsl.parser.parse(text)
-        except Exception as err:
-            print("Error in recipe file.")
-            print(err)
-            if gui_message:
-                dialog.infoDialog("Ошибка в разборе файла рецепта. \n" + str(err))
-        if print_pretty and (parse is not None):
-            print(parse.pretty())
-            print(parse)
-
-        return parse
-
     def readRecipe(self, recipe=""):
-
-        self.recipeFile = recipe
-
         if recipe:
-            with open(unicode(self.recipeFile, 'utf-8')) as f:
+            self.recipeFile = recipe
+        with open(unicode(self.recipeFile, 'utf-8')) as f:
 
-                text = unicode(f.read(), 'utf-8')
-
-                p = self.parse(text, True, True)
-
-
-                return
-
-                self.recipeText = []
-                for line in f:
-                    line = line.strip(' \t\r\n')
-                    if line != "":
-                        self.parse_command_line(line)
-                        #self.recipeText.append(line)
-                        #self.recipeIsConfigLine(line)
+            text = unicode(f.read(), 'utf-8')
+            self.program = dsl.parse_recipe_text(text, True, True)
+            dsl.transform(self.program)
 
     # --------------------------------------------------------------------------------------------------------
 

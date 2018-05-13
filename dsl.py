@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
-from lark import Lark
+import dialog
+from lark import Lark, Tree
 
 gramamr = u'''
 
@@ -11,10 +12,10 @@ gramamr = u'''
             instruction: ("Пауза"i | "Pause"i) [CTIME] -> pause
                        | ("Конец"i | "End"i) -> end
                        | ("Имя"i | "Name"i | "Заголовок"i) ESCAPED_STRING -> program_name
-                       | ("Параметр"i | "Parameter"i) IDENTIFIER [VALUE] [VALUE] -> parameter
-                       | ("Сообщение"i | "Message"i) VALUE [VALUE] [VALUE] -> message
-                       | ("Гудок"i | "Beep"i) VALUE VALUE [VALUE] [VALUE] -> beep
-                       | ("Вращай"i | "Operate"i) VALUE VALUE VALUE [VALUE] -> operate
+                       | ("Параметр"i | "Parameter"i) IDENTIFIER [" "VALUE] [" "VALUE] -> parameter
+                       | ("Сообщение"i | "Message"i) VALUE [" "VALUE] [" "VALUE] -> message
+                       | ("Гудок"i | "Beep"i) [INT][" "INT][" "INT][" "INT] -> beep
+                       | ("Вращай"i | "Operate"i) VALUE VALUE VALUE [" "VALUE] -> operate
                        | ("Повторить"i |"Repeat"i) VALUE code_block -> repeat
                        | IDENTIFIER "=" sum -> expression
 
@@ -27,7 +28,7 @@ gramamr = u'''
                  | product "/" item  -> div
 
              ?item: NUMBER           -> number
-                 | IDENTIFIER        ->  identifier
+                 | IDENTIFIER        -> identifier
                  | "-" item          -> neg
                  | "(" sum ")"
 
@@ -54,6 +55,38 @@ gramamr = u'''
         '''
 
 parser = Lark(gramamr)
+
+
+def transform(tree):
+    prev = None
+    for i in tree.children:
+        i.parent = tree
+        i.prev = prev
+        i.next = None
+        if prev is not None:
+            prev.next = i
+        prev = i
+
+        if isinstance(i, Tree):
+            transform(i)
+    # print tree
+    # print "---\n"
+
+
+def parse_recipe_text(text, gui_message=False, print_pretty=False):
+    tree = None
+    try:
+        tree = parser.parse(text)
+    except Exception as err:
+        print("Error in recipe file.")
+        print(err)
+        if gui_message:
+            dialog.infoDialog("Ошибка в разборе файла рецепта. \n" + str(err))
+    if print_pretty and (tree is not None):
+        print(tree.pretty())
+        print(len(tree.children))
+
+    return tree
 
 # test_text = u'''
 #     Имя "Name4 Name5" #comment
