@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import dialog
-from lark import Lark, Tree
+from lark import Lark
 
 gramamr = u'''
 
@@ -57,58 +57,16 @@ gramamr = u'''
 parser = Lark(gramamr)
 
 
-def transform(tree):
-    prev = None
-    for i in tree.children:
-        i.parent = tree
-        i.prev = prev
-        i.next = None
-        if prev is not None:
-            prev.next = i
-        prev = i
-
-        if isinstance(i, Tree):
-            transform(i)
-    # print tree
-    # print "---\n"
-
-
 def parse_recipe_text(text, gui_message=False, print_pretty=False):
     tree = None
     try:
         tree = parser.parse(text)
     except Exception as err:
-        print("Error in recipe file.")
-        print(err)
+        print("Error in recipe file. \n" + str(err))
         if gui_message:
             dialog.infoDialog("Ошибка в разборе файла рецепта. \n" + str(err))
     if print_pretty and (tree is not None):
         print(tree.pretty())
-        print(len(tree.children))
+        print(tree.children)
 
     return tree
-
-# test_text = u'''
-#     Имя "Name4 Name5" #comment
-#     Сообщение "Текст" "-"
-#     Parameter Пар155 "Сообщение о вводе" 65.554
-#     tt = 3 + 4 * (4 + 5 + Var34 * 8)
-#     Вращай 2 12 "Вперед" 5 # Частота, Время, Направление, Время возрастания
-#     Сообщение "Текст"
-#     Гудок 8000 10 3
-#     #comment
-#     Пауза 4:6436:66
-#     Пауза 55
-#     Конец
-#     Повторить 3 {
-#         Сообщение "Текст"
-#     }
-# '''
-#
-# try:
-#     parse = parser.parse(test_text)
-# except Exception as err:
-#     print err
-# if parse is not None:
-#     print(parse.pretty())
-#     print(parse)

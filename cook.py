@@ -9,12 +9,15 @@ import helper
 import cp2000 as dev
 import dsl
 
+import threading
+
 
 class State(object):
     STOPPED =  0b011110000
     RUNNING =       0b1111
     PROGRAM =       0b0001
     MANUAL =        0b0010
+    SUSPEND =       0b0100
     COMPLETED = 0b00010000
     UNKNOWN =  0b100000000
 
@@ -55,25 +58,25 @@ class State(object):
 class Cook(object):
 
     def __init__(self, instrument=None):
-        self.recipeName = ""
 
+        self.recipeName = ""
         self.recipeFile = ""
         self.program = None
-
-        self.current_command = None
 
         self.identifiers = {}
 
         # execution state
         self._state = State.STOPPED
 
-        t = time.time()
-        self.start_time = t
-        self.end_time = t
-        self.command_start_time = t
-        self.command_end_time = t
+        self.start_time = time.time()
+        self.end_time = time.time()
+        self.command_start_time = time.time()
+        self.command_end_time = time.time()
 
         self.device = dev.CP2000(instrument)
+
+        self.lock = threading.Lock()
+        self.suspend = threading.Lock()
 
     def cp_start(self, freq=None, direction=None):
         self.device.state = dev.CPState.STOPPED
@@ -94,30 +97,28 @@ class Cook(object):
     def state_repr(self):
         return State.repr(self.state)
 
+    #
     @property
-    def execution_time(self):
+    def total_time(self):
         return self.end_time - self.start_time
 
     @property
     def rest_time(self):
-        return self.end_time - time.time()
+        return max(0, self.end_time - time.time())
 
     @property
-    def command_execution_time(self):
+    def command_total_time(self):
         return self.command_end_time - self.command_start_time
 
     @property
     def command_rest_time(self):
-        return self.command_end_time - time.time()
+        return max(0, self.command_end_time - time.time())
 
     @property
     def is_command_complete(self):
         return self.command_rest_time <= 0
 
-    def compete_command(self):
-        if not self.is_command_complete:
-            self.command_end_time = time.time()
-
+    #
     def attr(self, node, position, default=None):
         if len(node.children) > position:
             return node.children[position].value
@@ -127,6 +128,9 @@ class Cook(object):
         result = int(self.attr(node, position, default))
         print "v " + str(result)
         return result
+
+
+
 
     def next_command(self):
         cmd = self.current_command
@@ -199,64 +203,97 @@ class Cook(object):
                 self.execute(i, verify_only)
 
     def end(self):
-        self.device.stop()
-        self.state = State.STOPPED
+        # self.device.stop()
+        # self.state = State.STOPPED
         logging.info("end()")
 
-    def run(self):  # program_execute
-        if not State.is_running(self.state):
-
-            self.state = State.RUNNING
-            self.start_time = time.time()
-            logging.info("run()")
-
-            self.current_command = self.program
-            self.execute(self.program, True)
-#            self.execute(self.program)
-
     def resume(self):
-        if State.is_running(self.state):
-            return
-        self.state = State.RUNNING
+        # if State.is_running(self.state):
+        #     return
+        # self.state = State.RUNNING
         logging.info("resume()")
 
-    def program_tick(self):
-        pass
+    def eval(self, tree):
+        for i in tree.children:
 
-    def tick(self):
-        if self.state == State.MANUAL:
-            self.manual_tick()
-        elif self.state == State.RUNNING:
-            self.program_tick()
+            print i
 
-    def manual_tick(self):
-        if self.rest_time > 0:
-            if self.command_rest_time > 0:
-                pass
-            else:
-                end_time = self.command_end_time
-                self.command_end_time = self.command_end_time + (self.command_end_time - self.command_start_time)
-                self.command_start_time = end_time
-                self.device.direction_reverse()
+            if isinstance(i, Tree):
+                self.eval(i)
+
+    def program_execute_t(self, program):
+        self.state = State.RUNNING
+
+        print program
+        self.eval(program)
+
+        self.state = State.COMPLETED
+
+    def program_execute(self):
+        if not State.is_running(self.state):
+            logging.info("program_execute()")
+
+            self.program_t = threading.Thread(name='program_execute',
+                                              target=self.program_execute_t,
+                                              args=(self.program,))
+            self.start_time = time.time()
+            self.end_time = self.start_time + config.max_execution_time
+
+            self.program_t.start()
+
+    # manual
+    def manual_execute_t(self, direction=None, freq=1, execution_time=1, period=0):
+        self.state = State.MANUAL
+
+        self.command_start_time = self.start_time
+        if period == 0:
+            self.command_end_time = self.end_time
         else:
-            self.end()
-            self.state == State.COMPLETED
-            logging.info("manual completed")
+            self.command_end_time = min(self.command_start_time + period, self.end_time)
+
+        self.lock.acquire()
+        self.cp_start(freq, direction)
+        self.lock.release()
+
+        while self.rest_time and State.is_running(self.state):
+
+            time.sleep(self.command_rest_time)
+
+            t_suspend = time.time()
+            self.suspend.acquire()
+            t_suspend_correction = time.time() - t_suspend
+            self.suspend.release()
+
+            self.end_time = self.end_time + t_suspend_correction
+            self.command_end_time = self.command_end_time + t_suspend_correction
+
+            if self.rest_time and State.is_running(self.state):
+                if period > 0:
+                    self.command_start_time = self.command_end_time
+                    self.command_end_time = min(self.command_start_time + period, self.end_time)
+
+                self.lock.acquire()
+                self.device.reverse()
+                self.lock.release()
+
+        self.lock.acquire()
+        self.device.stop()
+        self.lock.release()
+
+        self.state = State.COMPLETED
+        logging.info("manual complete")
 
     def manual_execute(self, direction=None, freq=1, execution_time=1, period=0):
-        logging.info("manual_execute()")
         if not State.is_running(self.state):
-            self.device.freq = freq
-            self.device.direction = direction
+            logging.info("manual_execute()")
+
+            self.manual_t = threading.Thread(name='manual_execute',
+                                             target=self.manual_execute_t,
+                                             args=(direction, freq, execution_time, period))
             self.start_time = time.time()
-            self.command_start_time = self.start_time
             self.end_time = self.start_time + min(execution_time, config.max_execution_time)
-            if period == 0:
-                self.command_end_time = self.end_time
-            else:
-                self.command_end_time = self.command_start_time + min(period, config.max_execution_time)
-            self.state = State.MANUAL
-            self.device.start()
+
+            self.manual_t.start()
 
     def readRecipe(self, recipe=""):
         if recipe:
@@ -265,7 +302,6 @@ class Cook(object):
 
             text = unicode(f.read(), 'utf-8')
             self.program = dsl.parse_recipe_text(text, True, True)
-            dsl.transform(self.program)
 
     # --------------------------------------------------------------------------------------------------------
 

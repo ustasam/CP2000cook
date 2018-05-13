@@ -133,7 +133,7 @@ class CP2000(object):
         self.state = CPState.STOPPED
 
     def restart(self, stoptime=None):
-        _stoptime = helper.default(stoptime, config.direction_reverse_min_time)
+        _stoptime = helper.default(stoptime, config.direction_reverse_min_time / 1000)
         if self.state == CPState.RUNNING:
             self.state = CPState.STOPPED
             if _stoptime != 0:

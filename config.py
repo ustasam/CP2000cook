@@ -28,10 +28,12 @@ FREQ_CORRECTION = 40 / 38  # frequency correction
 max_execution_time = 24 * 60 * 60  # 1 day
 max_frequency = 1100
 min_frequency = 1
-direction_reverse_min_time = 1500  # ms
+direction_reverse_min_time = 100  # ms
 
 #
 
 logLevel = logging.DEBUG
 
 gladefile = "cp2000.glade"
+
+gui_update_period = 100  # ms
