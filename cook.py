@@ -2,12 +2,14 @@
 
 import logging
 import time
-from lark import Lark, Tree
+from lark import Tree
 
 import config
 import helper
 import cp2000 as dev
 import dsl
+import messages
+import dialog
 
 import threading
 
@@ -63,7 +65,16 @@ class Cook(object):
         self.recipeFile = ""
         self.program = None
 
+        self.command = None  # node of current command
+
         self.identifiers = {}
+        self.errors = []
+
+        self.message = ""
+
+        self.user_expectation = False
+        self.user_pause = False
+        self.pause = 0  # pause counter
 
         # execution state
         self._state = State.STOPPED
@@ -76,7 +87,6 @@ class Cook(object):
         self.device = dev.CP2000(instrument)
 
         self.lock = threading.Lock()
-        self.suspend = threading.Lock()
 
     def cp_start(self, freq=None, direction=None):
         self.device.state = dev.CPState.STOPPED
@@ -97,6 +107,14 @@ class Cook(object):
     def state_repr(self):
         return State.repr(self.state)
 
+    @property
+    def is_running(self):
+        return State.is_running(self.state)
+
+    @property
+    def is_stopped(self):
+        return State.is_stopped(self.state)
+
     #
     @property
     def total_time(self):
@@ -114,132 +132,248 @@ class Cook(object):
     def command_rest_time(self):
         return max(0, self.command_end_time - time.time())
 
-    @property
-    def is_command_complete(self):
-        return self.command_rest_time <= 0
-
     #
-    def attr(self, node, position, default=None):
-        if len(node.children) > position:
-            return node.children[position].value
-        return default
-
-    def attr_i(self, node, position, default=0):
-        result = int(self.attr(node, position, default))
-        print "v " + str(result)
-        return result
-
-
-
-
-    def next_command(self):
-        cmd = self.current_command
-        if cmd.next:
-            self.current_command = cmd.next
-        else:
-            if hasattr(cmd, 'parent'):
-                self.current_command = cmd.parent
-            else:
-                self.current_command = None
-
-    def execute(self, node, verify_only=False):
-        # 22#self.current = node
-        self.command_start_time = time.time()
-        self.command_end_time = self.command_start_time
-
-        try:
-            if node.data == "program_name":
-                self.recipeName = self.attr(node, 0, "")
-                logging.info("% " + node.data + " " + self.recipeName)
-
-            elif node.data == "beep":
-                sound_freq = self.attr_i(node, 0, 3000)
-                duration = self.attr_i(node, 1, 1000)
-                times = self.attr_i(node, 2, 1)
-                pause_length = self.attr_i(node, 3, 1000)
-
-                if not verify_only:
-                    for i in range(times):
-                        helper.playsound(sound_freq, duration)
-                        if i < (times - 1):
-                            time.sleep(pause_length / 1000)
-                    logging.info("% " + node.data + " " + sound_freq)
-
-            elif node.data == "pause":
-                if not verify_only:
-                    logging.info("% " + node.data)
-
-            elif node.data == "end":
-                if not verify_only:
-                    self.end()
-                    logging.info("% " + node.data)
-
-            elif node.data == "parameter":
-                if not verify_only:
-                    self.identifiers[self.attr(node, 0, "default")] = self.attr(node, 0, 3000)  # &&&???
-                    logging.info("% " + node.data)
-
-            elif node.data == "message":
-                if not verify_only:
-                    logging.info("% " + node.data)
-
-            elif node.data == "repeat":
-                if not verify_only:
-                    logging.info("% " + node.data)
-
-            elif node.data == "expression":
-                if not verify_only:
-                    logging.info("% " + node.data)
-
-            elif node.data == "operate":
-                if not verify_only:
-                    logging.info("% " + node.data)
-
-        except Exception as err:
-            logging.info("Error execute() command: " + node.data + " " + str(err))
-
-        for i in node.children:
-            if isinstance(i, Tree):
-                self.execute(i, verify_only)
+    def stop(self):
+        self.end()
+        logging.info("stop()")
 
     def end(self):
-        # self.device.stop()
-        # self.state = State.STOPPED
+        self.state = State.STOPPED
+        self.device.stop()
+        self.pause = 0
         logging.info("end()")
 
+    def suspend(self):
+        self.pause += 1
+        logging.info("suspend()")
+
     def resume(self):
-        # if State.is_running(self.state):
-        #     return
-        # self.state = State.RUNNING
+        self.pause -= 1
         logging.info("resume()")
 
-    def eval(self, tree):
-        for i in tree.children:
+    def pause_sleep(self, max_duration=2147483647, release_lock=False):
+        if self.pause or self.user_expectation:
+            begin_time = time.time()
+            max_time = begin_time + max_duration
 
-            print i
+            if release_lock:
+                self.lock.release()
 
-            if isinstance(i, Tree):
-                self.eval(i)
+            while self.pause and \
+                    self.is_running and (max_time > time.time()):
+                time.sleep(0.1)
+
+            while self.user_pause or \
+                    self.user_expectation:
+                time.sleep(0.1)
+
+            if release_lock:
+                self.lock.acquire()
+
+            return time.time() - begin_time
+        else:
+            return 0
+
+    def expression(self, node):
+        if node.data == "mul":
+            return float(self.expression(node.children[0])) \
+                * float(self.expression(node.children[1]))
+        elif node.data == "div":
+            return float(self.expression(node.children[0])) \
+                / float(self.expression(node.children[1]))
+        elif node.data == "add":
+            return float(self.expression(node.children[0])) \
+                + float(self.expression(node.children[1]))
+        elif node.data == "sub":
+            return float(self.expression(node.children[0])) \
+                - float(self.expression(node.children[1]))
+        elif node.data == "neg":
+            return -1 * float(self.expression(node.children[0]))
+        elif node.data == "constant":
+            return node.children[0].value
+        elif node.data == "identifier":
+            identifier = str(node.children[0].value)
+            if identifier in self.identifiers:
+                return self.identifiers[identifier]
+            else:
+                self.errors.append(["error", "expression", "Identifier %s not fount." % identifier])
+                return 0
+
+    def user_eval(self):
+        if self.user_expectation and \
+                self.is_running and \
+                (self.command is not None):
+
+            args = self.command.args if hasattr(self.command, 'args') else None
+
+            if self.command.data == "message":
+                dialog.infoDialog(args['message'])
+            elif self.command.data == "parameter":
+                res = dialog.textInputDialog(
+                            message=args['message'],
+                            value=args['default'],
+                            title="Введите значение", value_message="Значение")
+
+                self.identifiers[args['name']] = res
+
+            self.user_expectation = False
+
+    def eval(self, node, verification=False):
+
+        self.pause_sleep()
+
+        if not self.is_running:
+            return
+
+        self.command = node
+        name = self.command.data
+        self.command.name = name
+        self.command.loc_name = dsl.get_command_loc_name(self.command.name)
+
+        args = dsl.get_command_arguments(self.command)
+        self.command.args = args
+
+        self.command_start_time = time.time()
+
+        if config.print_debug:
+            print "\n" + "-" * 10 + node.data + "-"*10
+            print "self.identifiers=" + str(self.identifiers)
+            print "self.command=" + str(self.command)
+            print "self.command.args=" + str(self.command.args)
+            print "+" * 10
+
+        try:
+            if name == "program_name":
+                self.recipeName = args['name']
+
+                if self.recipeName == "":
+                    self.errors.append(["warinig", name, "Program has no name."])
+                if not verification:
+                    logging.info("% " + name + " " + str(args))
+
+            elif name == "beep":
+                if not verification:
+
+                    for i in range(args['count']):
+
+                        helper.playsound(args['frequency'], args['duration'] * 1000)
+                        if i < (args['count'] - 1):
+                            time.sleep(args['pause'])
+
+                    logging.info("% " + name + " " + str(args))
+                else:
+                    duration = (args['duration'] * args['count'] + args['pause'] * (args['count'] - 1))
+                    if duration > 15:
+                        self.errors.append(["warinig", name,
+                                            "Beep duration too long: " + str(duration)])
+
+            elif name == "pause":
+                if not verification:
+
+                    self.pause += 1
+                    self.pause_sleep(max_duration=args['duration'])
+                    self.pause -= 1
+
+                    logging.info("% " + name + " " + str(args))
+
+            elif name == "end":
+                if not verification:
+                    self.end()
+                    self.state = State.COMPLETED
+                    logging.info("% " + name + " " + str(args))
+
+            elif name == "parameter":
+                if not verification:
+                    self.user_expectation = True
+                    self.pause_sleep()
+                    logging.info("% " + name + " " + str(args))
+
+            elif name == "message":
+                if not verification:
+                    self.user_expectation = True
+                    self.pause_sleep()
+                    logging.info("% " + name + " " + str(args))
+
+            elif name == "repeat":
+                if not verification:
+                    # for i in node.children:
+                    #     if isinstance(i, Tree):
+                    #         self.eval(i, verification)
+                    logging.info("% " + name + " " + str(args))
+
+            elif name == "expression":
+
+                identifier = self.command.children[0].value
+                result = self.expression(self.command.children[1])
+
+                self.identifiers[identifier] = result
+
+            elif name == "operate":
+                op_time = helper.parse_time(args['time'])
+                rising_time = helper.parse_time(args['rising_time'])
+
+                direction = helper.parse_direction(dsl.direction(args['direction']))
+
+                if rising_time > time:
+                    self.errors.append(["warinig", name,
+                                       messages.rising_time_warinig % (rising_time, op_time)])
+                    rising_time = time
+
+                target_rising_time = rising_time + time.time()
+                target_time = op_time + time.time()
+
+                if not verification:
+
+                    # TODO: rising_steps = min(15, int(rising_time/2))
+                    # for step in range(rising_steps):
+                    #     self.pause_sleep()
+                    #     self.lock.acquire()
+                    #     self.lock.release()
+
+                    self.lock.acquire()
+                    self.cp_start(freq=args['frequency'], direction=direction)
+                    self.lock.release()
+
+                    while self.is_running and (target_time > time.time()):
+                        time.sleep(0.1)
+                        target_time += self.pause_sleep()
+
+                    logging.info("% " + name + " " + str(args))
+
+        except Exception as err:
+            logging.info("Error eval command: " + name + " " + str(args) + " - " + str(err))
 
     def program_execute_t(self, program):
+        self.start_time = time.time()
+        self.end_time = self.start_time + config.max_execution_time
+
         self.state = State.RUNNING
 
-        print program
-        self.eval(program)
+        self.command = None  # node of current command
+
+        self.identifiers = {}
+        self.errors = []
+
+        self.message = ""
+
+        self.user_expectation = False
+        self.user_pause = False
+        self.pause = 0
+
+        for node in program.children:  # start is root node
+            if isinstance(node, Tree):
+                self.eval(node)
 
         self.state = State.COMPLETED
 
     def program_execute(self):
-        if not State.is_running(self.state):
-            logging.info("program_execute()")
-
+        if not self.is_running:
             self.program_t = threading.Thread(name='program_execute',
                                               target=self.program_execute_t,
                                               args=(self.program,))
-            self.start_time = time.time()
-            self.end_time = self.start_time + config.max_execution_time
-
             self.program_t.start()
+
+            logging.info("program_execute()")
 
     # manual
     def manual_execute_t(self, direction=None, freq=1, execution_time=1, period=0):
@@ -255,7 +389,7 @@ class Cook(object):
         self.cp_start(freq, direction)
         self.lock.release()
 
-        while self.rest_time and State.is_running(self.state):
+        while self.rest_time and self.is_running:
 
             time.sleep(self.command_rest_time)
 
@@ -267,7 +401,7 @@ class Cook(object):
             self.end_time = self.end_time + t_suspend_correction
             self.command_end_time = self.command_end_time + t_suspend_correction
 
-            if self.rest_time and State.is_running(self.state):
+            if self.rest_time and self.is_running:
                 if period > 0:
                     self.command_start_time = self.command_end_time
                     self.command_end_time = min(self.command_start_time + period, self.end_time)
@@ -284,7 +418,7 @@ class Cook(object):
         logging.info("manual complete")
 
     def manual_execute(self, direction=None, freq=1, execution_time=1, period=0):
-        if not State.is_running(self.state):
+        if not self.is_running:
             logging.info("manual_execute()")
 
             self.manual_t = threading.Thread(name='manual_execute',
@@ -296,17 +430,30 @@ class Cook(object):
             self.manual_t.start()
 
     def readRecipe(self, recipe=""):
+
         if recipe:
             self.recipeFile = recipe
+
         with open(unicode(self.recipeFile, 'utf-8')) as f:
 
             text = unicode(f.read(), 'utf-8')
-            self.program = dsl.parse_recipe_text(text, True, True)
+
+            self.program = None
+
+            try:
+                self.program = dsl.parse(text)
+            except Exception as err:
+                print("Error in recipe file. \n" + str(err))
+                dialog.infoDialog("Ошибка в разборе файла рецепта. \n" + str(err))
+
+        if self.program is not None and config.print_debug:
+            print(self.program.pretty())
+            print(self.program.children)
 
     # --------------------------------------------------------------------------------------------------------
 
     def reaction_test2(self):
-        if not State.is_running(self.state):
+        if not self.is_running:
             logging.info("reaction_test2(): Begin.")
             self.cp_start(2, dev.Direction.FWD)
             time.sleep(3)

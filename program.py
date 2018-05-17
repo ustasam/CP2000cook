@@ -93,11 +93,12 @@ class Main_GUI(object):
             # elif int(self.cook.state) & cook.State.PROGRAM != 0:
             #    self.ui_update_recipe()
 
+            self.cook.user_eval()
+
         except Exception as err:
             logging.error("error on_timeout(): " + str(err))
 
         self.cook.lock.release()
-
 
         milliseconds = config.gui_update_period
         if not cook.State.is_running(self.cook.state):

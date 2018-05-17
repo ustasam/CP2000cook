@@ -21,11 +21,20 @@ def parse_time(time):
         return 0
 
 
+def parse_time2(ctime):  # yet another variant ;)
+    items = ctime.split(":")[::-1]
+    m = [1, 60, 3600, 3600 * 24]
+    result = 0
+    for i, item in enumerate(items):
+        result += int(item) * m[i]
+    return result
+
+
 def parse_direction(direction):
     d = direction.strip(' \t\r\n').lover()
-    if d in ["fwd", "forward", "вперед", "вп", "впер", "в", "1"]:
+    if d in [True, "fwd", "forward", "вперед", "вп", "впер", "в", "1"]:
         return cp2000.Direction.FWD
-    elif d in ["rev", "reverse ", "назад", "наз", "н", "2"]:
+    elif d in [False, "rev", "reverse ", "назад", "наз", "н", "2"]:
         return cp2000.Direction.REV
     else:
         return cp2000.Direction.UNKNOWN

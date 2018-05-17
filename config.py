@@ -36,4 +36,8 @@ logLevel = logging.DEBUG
 
 gladefile = "cp2000.glade"
 
-gui_update_period = 100  # ms
+gui_update_period = 250  # ms
+
+languge = 'ru'
+
+print_debug = True
