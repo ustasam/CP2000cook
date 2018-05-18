@@ -5,9 +5,17 @@ import minimalmodbus
 import serial
 import logging
 
-recipes_folder = "./recepies"
+recipes_folder = "./recipe.example"
+recipes_menu_file = recipes_folder + "/recipe.menu"
+report_file = recipes_folder + "/report.csv"
 
-logfile = "cp2000.log"
+logfile = recipes_folder + "/recipe.log"
+
+languge = 'ru'
+
+logLevel = logging.DEBUG
+print_debug = True  # print debug messages
+
 
 PORT = '/dev/ttyUSB0'
 ADDRESS = 1  # modbus instrument address
@@ -22,22 +30,16 @@ minimalmodbus_debug = False
 
 emulate_instrument = False
 
-# device parameters
-FREQ_CORRECTION = 40 / 38  # frequency correction
 
-max_execution_time = 24 * 60 * 60  # 1 day
+# device parameters
+frequency_correction = 40 / 38
+max_execution_time = 24 * 60 * 60 - 1  # 1 day
 max_frequency = 1100
 min_frequency = 1
 direction_reverse_min_time = 100  # ms
 
-#
-
-logLevel = logging.DEBUG
-
-gladefile = "cp2000.glade"
 
 gui_update_period = 250  # ms
 
-languge = 'ru'
-
-print_debug = True
+gladefile = "cp2000.glade"
+cssfile = "cp2000.css"

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
-import dialog
 from lark import Lark
+import re
 
 gramamr = u'''
 
@@ -11,7 +11,7 @@ gramamr = u'''
 
             instruction: ("Пауза"i | "Pause"i) [CTIME] -> pause
                        | ("Имя"i | "Name"i | "Заголовок"i) ESCAPED_STRING -> program_name
-                       | ("Параметр"i | "Parameter"i) IDENTIFIER [" "VALUE] [" "ESCAPED_STRING]  -> parameter
+                       | ("Параметр"i | "Parameter"i) IDENTIFIER [" "VALUE | ESCAPED_STRING] [" "ESCAPED_STRING]  -> parameter
                        | ("Сообщение"i | "Message"i) ESCAPED_STRING [" "NUMBER] [" "ESCAPED_STRING] -> message
                        | ("Гудок"i | "Beep"i) [INT][" "INT][" "INT][" "INT] -> beep
                        | ("Операция"i | "Operate"i) VALUE ESCAPED_STRING CTIME [" "CTIME] -> operate
@@ -35,7 +35,7 @@ gramamr = u'''
 
             IDENTIFIER: /[_A-zА-Яа-я]([\._A-zА-Яа-я0-9])*/
             NUMBER : ( SIGNED_INT"."INT | SIGNED_INT )
-            VALUE: NUMBER | IDENTIFIER | ESCAPED_STRING
+            VALUE: NUMBER | IDENTIFIER
             CTIME: [[INT":"]INT":"]INT
 
             COMMENT: "/*" /(.|\\n|\\r)+/ "*/"
@@ -94,12 +94,14 @@ default_value_pos = 2
 def arg(node, position=0, default=""):
     if len(node.children) > position:
         val = node.children[position].value
-        print node.children[position].name
+
         if isinstance(default, int):
             return int(val)
         elif isinstance(default, float):
             return float(val)
         else:
+            if node.children[position].type == "ESCAPED_STRING":
+                return val[1:-1]  # remove quotes
             return val
     return default
 
@@ -123,6 +125,11 @@ def get_command_loc_name(command_name):
         return command_name
 
 
+def get_command_argument_loc_name(command_name, argument_name):
+    return argument_name
+    pass
+
+
 def get_command_arguments(node):
     result = {}
 
@@ -133,3 +140,29 @@ def get_command_arguments(node):
             result[item[name_pos]] = arg(node, pos, item[default_value_pos])
 
     return result
+
+
+def fill_identifiers(args, identifiers):
+    res = {}
+    for key, value in args.iteritems():
+        if type(value) == unicode or type(value) == str:  # get_command_argument_loc_name
+            #value = unicode(value)
+            # TODO
+            ids = re.findall('%(.+?)%', value)
+            print ids
+            for r in ids:
+                if r in identifiers:
+                    #r = r if type(r) == unicode else unicode(r)
+
+                    print identifiers[r]
+
+                    # v = identifiers[r] if type(identifiers[r]) == unicode else unicode(identifiers[r], 'cp1251')
+
+                    v = "%s" % identifiers[r]
+
+                    value = value.replace(u"%" + r + u"%",
+                        "v")
+            res[key] = value
+        else:
+            res[key] = value
+    return res

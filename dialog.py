@@ -23,6 +23,9 @@ def selectFile(message="", parent=None, location="."):
     filter_any.add_pattern("*.*")
     dialog.add_filter(filter_any)
 
+    dialog.set_icon_name("applications-graphics")
+    #dialog.get_style_context().add_class("dialog")
+
     response = dialog.run()
     if response == Gtk.ResponseType.OK:
         result =  dialog.get_filename()
@@ -33,6 +36,8 @@ def selectFile(message="", parent=None, location="."):
 
 def infoDialog(info, explains="", parent=None):
     dialog = Gtk.MessageDialog(parent, 0, Gtk.MessageType.INFO, Gtk.ButtonsType.OK, info)
+    dialog.set_icon_name("applications-graphics")
+    dialog.get_style_context().add_class("dialog")
     dialog.format_secondary_text(explains)
     dialog.run()
     dialog.destroy()
@@ -43,6 +48,10 @@ def yesNoDialog(message, parent=None, title="Вопрос."):
         parent, Gtk.DialogFlags.MODAL,
         Gtk.MessageType.QUESTION,
         Gtk.ButtonsType.YES_NO, message, title=title)
+
+    dialog.set_icon_name("applications-graphics")
+    dialog.get_style_context().add_class("dialog")
+
     response = dialog.run()
     dialog.destroy()
     if response == Gtk.ResponseType.YES:
@@ -78,6 +87,9 @@ def textInputDialog(message, value="", title="", format="", value_message="Зн�
 
     # dialog.format_secondary_markup("")  # identification
     dialog.vbox.pack_end(hbox, True, True, 0)
+
+    dialog.set_icon_name("applications-graphics")
+    dialog.get_style_context().add_class("dialog")
 
     dialog.show_all()
     dialog.run()

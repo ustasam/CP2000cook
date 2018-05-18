@@ -4,7 +4,7 @@ import os
 import logging
 import time
 
-# import helper
+import helper
 import config
 import dialog
 import cook
@@ -12,16 +12,27 @@ import cp2000
 
 import gi
 gi.require_version('Gtk', '3.0')
-from gi.repository import Gtk, GObject  # GLib, Gio,
+from gi.repository import Gtk, GObject, Gdk  # GLib, Gio,
 
 
 class Main_GUI(object):
 
     def __init__(self, instrument=None, recipe=""):
+
+        screen = Gdk.Screen.get_default()
+        css_provider = Gtk.CssProvider()
+        css_provider.load_from_path(config.cssfile)
+
+        context = Gtk.StyleContext()
+        context.add_provider_for_screen(
+                screen, css_provider,
+                Gtk.STYLE_PROVIDER_PRIORITY_USER)
+
         self.gladefile = config.gladefile
         self.builder = Gtk.Builder()
         self.builder.add_from_file(self.gladefile)
         self.builder.connect_signals(self)
+
         self.window = self.builder.get_object("main_window")
 
         # controls
@@ -32,7 +43,7 @@ class Main_GUI(object):
 
         self.ui_progress = self.builder.get_object("progress")
         self.ui_message = self.builder.get_object("message")
-        self.ui_operationN = self.builder.get_object("operationN")
+        self.ui_operation_args = self.builder.get_object("operation_args")
         self.ui_operation_state = self.builder.get_object("operation_state")
         self.ui_operation = self.builder.get_object("operation")
 
@@ -65,35 +76,62 @@ class Main_GUI(object):
         self.recipe_select_page = self.notebook.get_nth_page(self.recipe_select_page_number)
         self.recipe_page_number = 1
         self.recipe_page = self.notebook.get_nth_page(self.recipe_page_number)
-        self.state_page_number = 2
-        self.state_page = self.notebook.get_nth_page(self.state_page_number)
-        self.manual_page_number = 3
+        self.manual_page_number = 2
         self.manual_page = self.notebook.get_nth_page(self.manual_page_number)
 
         self.cook = cook.Cook(instrument)
 
+        self.load_menu()
+
         if recipe:
             self.cook.readRecipe(recipe)
+            self.notebook.set_current_page(self.recipe_page_number)
 
         self.ui_update_recipe_name()
-        self.ui_update_all()
+        self.ui_update_recipe()
+        self.ui_update_manual()
 
         self.window.show()
 
         self.timeout_id = GObject.timeout_add(config.gui_update_period, self.on_timeout, None)
+
+    def user_interaction_command(self):
+
+        if self.cook.is_running and \
+                cook.paused(self.cook.user_interaction) and \
+                (self.cook.command is not None):
+
+            args = self.cook.command.args if hasattr(self.cook.command, 'args') else None
+
+            if args and self.cook.command.name == "message":
+                dialog.infoDialog(args['message'], parent=self.window)
+
+            elif args and self.cook.command.name == "parameter":
+                res = dialog.textInputDialog(
+                            message=args['message'],
+                            value=args['default'],
+                            title="Введите значение", value_message="Значение",
+                            parent=self.window)
+
+                self.cook.command.result = res
+                print res
+
+            cook.pause(self.cook.user_interaction, False)
 
     def on_timeout(self, arg):
 
         self.cook.lock.acquire()
 
         try:
-            self.ui_update()
-            # if int(self.cook.state) & cook.State.MANUAL != 0:
-            self.ui_update_manual()
-            # elif int(self.cook.state) & cook.State.PROGRAM != 0:
-            #    self.ui_update_recipe()
+            self.ui_notebook_update()
 
-            self.cook.user_eval()
+            # if cook.State.is_manual(self.cook.state):
+            self.ui_update_manual()
+            # if cook.State.is_program(self.cook.state):
+            self.ui_update_recipe()
+
+            if cook.paused(self.cook.user_interaction):
+                self.user_interaction_command()
 
         except Exception as err:
             logging.error("error on_timeout(): " + str(err))
@@ -101,24 +139,63 @@ class Main_GUI(object):
         self.cook.lock.release()
 
         milliseconds = config.gui_update_period
-        if not cook.State.is_running(self.cook.state):
+        if cook.State.is_stopped(self.cook.state):
             milliseconds = 2000 - (time.time() % 1) * 1000
 
         self.timeout_id = GObject.timeout_add(milliseconds, self.on_timeout, None)
 
-    def notebook_update_state(self):
-        self.recipe_select_page.show()
-        self.recipe_page.show()
-        self.state_page.show()
-        self.manual_page.show()
+    def ui_update_recipe(self):
 
-        if cook.State.is_manual(self.cook.state):
-            self.ui_test_box.hide()
-        elif cook.State.is_program(self.cook.state):
-            self.ui_test_box.hide()
+        if self.cook.command is not None and self.cook.is_running:
+            if self.cook.message:
+                self.ui_message.set_text(self.cook.message)
+            else:
+                self.ui_message.set_text(self.cook.name)
 
-    def ui_update(self):
-        pass
+            self.ui_operation.set_text(self.cook.command.loc_name)
+
+            args = u""
+            for key, value in self.cook.command.args.iteritems():
+                if type(value) == unicode:  # get_command_argument_loc_name
+                    args = args + key + ":" + value + u" , "  # .decode('unicode-escape')
+                else:
+                    args = args + key + ":" + str(value) + u" , "
+            if args:
+                args = args[:-3]
+
+            self.ui_operation_args.set_text(args)
+
+            self.ui_time1.set_text(helper.format_time(self.cook.command_time))
+            self.ui_time2.set_text(helper.format_time(self.cook.command_total_time)
+                                   if self.cook.command_total_time else "-")
+            self.ui_time3.set_text(helper.format_time(self.cook.time))
+            self.ui_time4.set_text(helper.format_time(self.cook.total_time)
+                                   if self.cook.total_time else "-")
+
+            self.ui_progress.set_fraction(self.cook.time / self.cook.total_time)
+
+            self.ui_operation_state.set_text(cook.State.repr(self.cook.state))
+            self.ui_status.set_text(cook.State.repr(self.cook.state))
+        else:
+            self.ui_message.set_text(self.cook.name)
+
+            self.ui_operation.set_text("-")
+            self.ui_operation_args.set_text("")
+
+            self.ui_time1.set_text("")
+            self.ui_time2.set_text("")
+            self.ui_time3.set_text("")
+            self.ui_time4.set_text("")
+
+            self.ui_progress.set_fraction(0.0)
+
+            self.ui_operation_state.set_text("")
+            self.ui_status.set_text("")
+
+        self.ui_freq1.set_text("%.1f" % (self.cook.device.cp_freq_current/100.0))
+        self.ui_freq2.set_text("%.1f" % (self.cook.device.cp_freq_current/100.0))
+        self.ui_par.set_text("")
+        self.ui_direction.set_text(cp2000.Direction.repr(self.cook.device.direction))
 
     def ui_update_manual(self):
         self.ui_manual_freq_label.set_text("{0:.1f}".format(self.cook.device.cp_freq_current/100))
@@ -126,42 +203,31 @@ class Main_GUI(object):
         self.ui_manual_direction_label.set_text(cp2000.Direction.repr(self.cook.device.direction))
         self.ui_manual_direction_time_label.set_text("{0:.1f}".format(self.cook.command_rest_time))
 
-    def ui_update_recipe(self):
-        self.ui_progress.set_fraction(0.0)
-        if self.cook.recipeFile == "":
-            self.ui_message.set_text("Откройте рецепт.")
+    def ui_notebook_update(self):
+        if cook.State.is_program(self.cook.state):
+            self.recipe_select_page.hide()
+            self.manual_page.hide()
+            self.recipe_page.show()
+        elif cook.State.is_manual(self.cook.state):
+            self.recipe_select_page.hide()
+            self.recipe_page.hide()
+            self.manual_page.show()
         else:
-            if cook.State.is_running(self.cook.state):
-                self.ui_message.set_text("")
-            else:
-                self.ui_message.set_text("Ожидание запуска")
-        self.ui_operationN.set_text("")
-        self.ui_operation_state.set_text(cook.State.repr(self.cook.state))
-        self.ui_operation.set_text("")
-        self.ui_time1.set_text("")
-        self.ui_time2.set_text("")
-        self.ui_time3.set_text("")
-        self.ui_time4.set_text("")
-        self.ui_freq1.set_text("")
-        self.ui_freq2.set_text("")
-        self.ui_par.set_text("")
-        self.ui_direction.set_text("")
-        self.ui_status.set_text("")
-
-    def ui_update_all(self):
-        self.ui_update()
-        self.ui_update_recipe()
-        self.ui_update_manual()
+            self.recipe_select_page.show()
+            self.recipe_page.show()
+            self.manual_page.show()
 
     def openRecipeMenu(self):
+        print("openRecipeMenu")
         pass
 
     def on_report_clicked(self, widget):
+        print("on_report_clicked")
         pass
 
     def openFile(self):
         if cook.State.is_running(self.cook.state):
-            dialog.infoDialog("Перед открытием рецепта необходимо завершить текущую операцию.")
+            dialog.infoDialog("Сначала остановите текущую операцию.", "Выполняется операция.", self.window)
         else:
             file = dialog.selectFile("Рецепт производства", self.window)
             if file != "":
@@ -170,7 +236,9 @@ class Main_GUI(object):
                 self.cook.readRecipe(file)
 
             self.ui_update_recipe_name()
-            self.ui_update_all()
+            self.ui_update_recipe()
+            self.ui_update_manual()
+            self.notebook.set_current_page(self.recipe_page_number)
 
     def ui_update_recipe_name(self):
         self.ui_recipe.set_text(os.path.basename(self.cook.recipeFile))
@@ -178,10 +246,8 @@ class Main_GUI(object):
             self.ui_message.set_text("Откройте рецепт.")
             self.ui_recipe_status.set_text("")
         else:
-            if self.cook.recipeName != "":
-                self.ui_recipe_status.set_text(self.cook.recipeName)  # unicode(, "cp1251")
-            else:
-                self.ui_recipe_status.set_text(os.path.basename(self.cook.recipeFile))
+            self.ui_message.set_text(self.cook.name)
+            self.ui_recipe_status.set_text(self.cook.recipeFile)
 
     def on_menu_open_activate(self, menuitem):
         logging.info("on_menu_open_activate()")
@@ -191,62 +257,78 @@ class Main_GUI(object):
         logging.info("on_open_clicked()")
         self.openFile()
 
-    def on_stop_clicked(self, widget):
-        logging.info("on_stop_clicked()")
-        self.cook.end()
-        self.notebook_update_state()
-        self.ui_update_all()
-
     def on_start_clicked(self, widget):
         logging.info("on_start_clicked()")
-        if cook.State.is_stopped(self.cook.state):
-            if self.notebook.get_current_page() == self.manual_page_number:
-                if dialog.yesNoDialog("Выполнить ручную операцию?", self.window):
-                    self.manual_execute()
-            else:
-                if dialog.yesNoDialog("Начать выполнение рецепта?", self.window):
-                    self.cook.program_execute()
-
-            self.notebook_update_state()
+        if cook.State.is_running(self.cook.state):
+            dialog.infoDialog("Сначала остановите текущую операцию.", "Выполняется операция.", self.window)
+        elif not self.cook.program:
+            dialog.infoDialog("Не выбран или не открыт рецепт.", "Откройте рецепт.", self.window)
         else:
-            dialog.infoDialog("Сначала остановите программу.", explains="Выполняется операция.")
+            if dialog.yesNoDialog("Начать выполнение рецепта?", self.window):
+                self.cook.program_execute()
+                self.ui_notebook_update()
+
+    def on_stop_clicked(self, widget):
+            logging.info("on_stop_clicked()")
+            self.cook.stop()
+
+            self.ui_notebook_update()
+            self.ui_update_recipe()
+            self.ui_update_manual()
+
+    def on_manual_enable_clicked(self, widget):
+
+        if cook.State.is_running(self.cook.state):
+            dialog.infoDialog("Сначала остановите текущую операцию.", "Выполняется операция.", self.window)
+        else:
+            if dialog.yesNoDialog("Выполнить ручную операцию?", self.window):
+                logging.info("on_manual_enable_clicked()")
+
+                freq = float(self.ui_manual_freq.get_text())
+                execution_time = int(self.ui_manual_time.get_text())
+                if self.ui_manual_direction.get_active():
+                    direction = cp2000.Direction.FWD
+                else:
+                    direction = cp2000.Direction.REV
+                period = int(self.ui_manual_direction_time.get_text())
+
+                self.cook.manual_execute(direction, freq, execution_time, period)
+                self.ui_notebook_update()
+
+    def on_manual_disable_clicked(self, widget):
+        self.ui_notebook_update()
+        pass
+
+    def quit(self):
+        self.cook.stop()
+        logging.info("quit()")
+        Gtk.main_quit()
 
     def on_menu_quit_activate(self, menuitem):
-        logging.info("on_menu_quit_activate()")
         if dialog.yesNoDialog("Выйти из программы?", self.window):
             self.quit()
 
     def on_main_window_delete_event(self, widget, a):
-        logging.info("on_main_window_delete_event()")
         if dialog.yesNoDialog("Выйти из программы?", self.window):
             self.quit()
         else:
             return True
 
-    def quit(self):
-        self.cook.end()
-        logging.info("quit()")
-        Gtk.main_quit()
-
-    def manual_execute(self):
-        freq = float(self.ui_manual_freq.get_text())
-        execution_time = int(self.ui_manual_time.get_text())
-        if self.ui_manual_direction.get_active():
-            direction = cp2000.Direction.FWD
-        else:
-            direction = cp2000.Direction.REV
-        period = int(self.ui_manual_direction_time.get_text())
-
-        self.cook.manual_execute(direction, freq, execution_time, period)
-
-    def on_device_test1_clicked(self, widget):
+    def on_test1(self, widget):
         cp2000.cp2000_communication_test(self.cook.device.instrument)
 
-    def on_device_test2_clicked(self, widget):
+    def on_test2(self, widget):
         self.cook.reaction_test2()
 
+    def load_menu(self):
+        with open(unicode(config.recipes_menu_file, 'utf-8')) as f:
 
-def main(instrument, recipe):
+            text = unicode(f.read(), 'utf-8')
+
+            print text
+
+
+def run_main(instrument, recipe):
     main_gui = Main_GUI(instrument, recipe)
     Gtk.main()
     main_gui = main_gui

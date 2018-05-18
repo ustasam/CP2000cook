@@ -3,6 +3,8 @@
 import logging
 import time
 from lark import Tree
+import threading
+import os
 
 import config
 import helper
@@ -10,8 +12,6 @@ import cp2000 as dev
 import dsl
 import messages
 import dialog
-
-import threading
 
 
 class State(object):
@@ -44,7 +44,7 @@ class State(object):
         if state == State.STOPPED:
             return "Остановлен"
         elif state == State.RUNNING:
-            return "Запущен"
+            return "Выполняется"
         elif state == State.PROGRAM:
             return "Программа"
         elif state == State.MANUAL:
@@ -55,6 +55,17 @@ class State(object):
             return "Неизвестно"
         else:
             return "Неизвестно"
+
+
+def paused(pause):
+    return not pause.is_set()
+
+
+def pause(pause, state=True):
+    if state:
+        pause.clear()
+    else:
+        pause.set()
 
 
 class Cook(object):
@@ -72,17 +83,17 @@ class Cook(object):
 
         self.message = ""
 
-        self.user_expectation = False
-        self.user_pause = False
-        self.pause = 0  # pause counter
+        self.pause = threading.Event()  # is_set() == False = pause
+        self.user_pause = threading.Event()
+        self.user_interaction = threading.Event()
 
         # execution state
         self._state = State.STOPPED
 
         self.start_time = time.time()
-        self.end_time = time.time()
+        self.end_time = time.time() - 1
         self.command_start_time = time.time()
-        self.command_end_time = time.time()
+        self.command_end_time = time.time() - 1
 
         self.device = dev.CP2000(instrument)
 
@@ -94,6 +105,15 @@ class Cook(object):
         self.device.direction = helper.default(direction, self.device.direction)
         self.device.state = dev.CPState.RUNNING
         logging.info("start(): " + str(self.device.freq) + " " + dev.Direction.repr(self.device.direction))
+
+    @property
+    def name(self):
+        if self.recipeName:
+            return self.recipeName
+        elif self.recipeFile:
+            return os.path.splitext(os.path.basename(self.recipeFile))[0]
+        else:
+            return ""
 
     @property
     def state(self):
@@ -117,12 +137,20 @@ class Cook(object):
 
     #
     @property
+    def time(self):
+        return time.time() - self.start_time
+
+    @property
     def total_time(self):
         return self.end_time - self.start_time
 
     @property
     def rest_time(self):
         return max(0, self.end_time - time.time())
+
+    @property
+    def command_time(self):
+        return time.time() - self.command_start_time
 
     @property
     def command_total_time(self):
@@ -132,47 +160,38 @@ class Cook(object):
     def command_rest_time(self):
         return max(0, self.command_end_time - time.time())
 
-    #
     def stop(self):
-        self.end()
-        logging.info("stop()")
-
-    def end(self):
         self.state = State.STOPPED
         self.device.stop()
-        self.pause = 0
-        logging.info("end()")
-
-    def suspend(self):
-        self.pause += 1
-        logging.info("suspend()")
-
-    def resume(self):
-        self.pause -= 1
-        logging.info("resume()")
+        pause(self.user_interaction, False)
+        pause(self.user_pause, False)
+        pause(self.pause, False)
+        logging.info("stop()")
 
     def pause_sleep(self, max_duration=2147483647, release_lock=False):
-        if self.pause or self.user_expectation:
-            begin_time = time.time()
-            max_time = begin_time + max_duration
 
-            if release_lock:
-                self.lock.release()
+        begin_time = time.time()
+        max_time = begin_time + max_duration
 
-            while self.pause and \
-                    self.is_running and (max_time > time.time()):
-                time.sleep(0.1)
+        lock_on_return = False
+        if release_lock and self.lock.locked():
+            lock_on_return = True
+            self.lock.release()
 
-            while self.user_pause or \
-                    self.user_expectation:
-                time.sleep(0.1)
+        while (paused(self.pause) or paused(self.user_pause) or paused(self.user_interaction)) \
+                and self.is_running:
 
-            if release_lock:
-                self.lock.acquire()
+            self.pause.wait(0.2)
+            self.user_pause.wait(0.5)
+            self.user_interaction.wait(0.5)
 
-            return time.time() - begin_time
-        else:
-            return 0
+            if (max_time >= time.time()):
+                pause(self.pause, False)
+
+        if lock_on_return:
+            self.lock.acquire()
+
+        return time.time() - begin_time
 
     def expression(self, node):
         if node.data == "mul":
@@ -199,25 +218,6 @@ class Cook(object):
                 self.errors.append(["error", "expression", "Identifier %s not fount." % identifier])
                 return 0
 
-    def user_eval(self):
-        if self.user_expectation and \
-                self.is_running and \
-                (self.command is not None):
-
-            args = self.command.args if hasattr(self.command, 'args') else None
-
-            if self.command.data == "message":
-                dialog.infoDialog(args['message'])
-            elif self.command.data == "parameter":
-                res = dialog.textInputDialog(
-                            message=args['message'],
-                            value=args['default'],
-                            title="Введите значение", value_message="Значение")
-
-                self.identifiers[args['name']] = res
-
-            self.user_expectation = False
-
     def eval(self, node, verification=False):
 
         self.pause_sleep()
@@ -231,9 +231,11 @@ class Cook(object):
         self.command.loc_name = dsl.get_command_loc_name(self.command.name)
 
         args = dsl.get_command_arguments(self.command)
+        args = dsl.fill_identifiers(args, self.identifiers)
         self.command.args = args
 
         self.command_start_time = time.time()
+        self.command_end_time = self.command_start_time
 
         if config.print_debug:
             print "\n" + "-" * 10 + node.data + "-"*10
@@ -270,28 +272,31 @@ class Cook(object):
             elif name == "pause":
                 if not verification:
 
-                    self.pause += 1
+                    pause(self.pause)
                     self.pause_sleep(max_duration=args['duration'])
-                    self.pause -= 1
+                    pause(self.pause, False)
 
                     logging.info("% " + name + " " + str(args))
 
             elif name == "end":
                 if not verification:
-                    self.end()
+                    self.stop()
                     self.state = State.COMPLETED
                     logging.info("% " + name + " " + str(args))
 
             elif name == "parameter":
                 if not verification:
-                    self.user_expectation = True
-                    self.pause_sleep()
+                    pause(self.user_interaction)
+                    self.user_interaction.wait()
+
+                    self.identifiers[args['name']] = self.command.result
+
                     logging.info("% " + name + " " + str(args))
 
             elif name == "message":
                 if not verification:
-                    self.user_expectation = True
-                    self.pause_sleep()
+                    pause(self.user_interaction)
+                    self.user_interaction.wait()
                     logging.info("% " + name + " " + str(args))
 
             elif name == "repeat":
@@ -356,9 +361,14 @@ class Cook(object):
 
         self.message = ""
 
-        self.user_expectation = False
-        self.user_pause = False
-        self.pause = 0
+        self.start_time = time.time()
+        self.end_time = config.max_execution_time + time.time()
+        self.command_start_time = time.time()
+        self.command_end_time = config.max_execution_time + time.time()
+
+        pause(self.user_interaction, False)
+        pause(self.user_pause, False)
+        pause(self.pause, False)
 
         for node in program.children:  # start is root node
             if isinstance(node, Tree):
@@ -367,7 +377,7 @@ class Cook(object):
         self.state = State.COMPLETED
 
     def program_execute(self):
-        if not self.is_running:
+        if not self.is_running and self.program:
             self.program_t = threading.Thread(name='program_execute',
                                               target=self.program_execute_t,
                                               args=(self.program,))
@@ -394,9 +404,9 @@ class Cook(object):
             time.sleep(self.command_rest_time)
 
             t_suspend = time.time()
-            self.suspend.acquire()
+            self.lock.acquire()
             t_suspend_correction = time.time() - t_suspend
-            self.suspend.release()
+            self.lock.release()
 
             self.end_time = self.end_time + t_suspend_correction
             self.command_end_time = self.command_end_time + t_suspend_correction
@@ -437,7 +447,7 @@ class Cook(object):
         with open(unicode(self.recipeFile, 'utf-8')) as f:
 
             text = unicode(f.read(), 'utf-8')
-
+            print text
             self.program = None
 
             try:
@@ -450,7 +460,7 @@ class Cook(object):
             print(self.program.pretty())
             print(self.program.children)
 
-    # --------------------------------------------------------------------------------------------------------
+    # -------------------------------
 
     def reaction_test2(self):
         if not self.is_running:

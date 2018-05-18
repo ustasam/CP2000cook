@@ -1,0 +1,77 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+* {
+    border-radius: 0px;
+}
+
+.main_winodw  {
+    font-size: 23px;
+}
+
+.control_buttons {
+    font-size: 50px;
+}
+
+#message, #recipe {
+    font-size: 45px;
+}
+
+#operation {
+    font-size: 25px;
+}
+
+#state {
+    font-size: 30px;
+}
+
+#args {
+    font-size: 15px;
+}
+
+.input, .all_button{
+    font-size: 26px;
+}
+
+.dialog  {
+    font-size: 35px;
+}
+
+.notebook_label {
+    border-width: 0px;
+    font-size: 25px;
+    background-color: transparent;
+}
+
+.notebook tab {
+}
+
+.notebook tab:active {
+    background-color: brown;
+}
+
+.notebook {
+    border-width: 0px;
+}
+
+GtkStatusbar {
+    font-size: 20px;
+}
+
+#stop {
+    color: red;
+}
+
+#progress{
+    font-size: 18px;
+}

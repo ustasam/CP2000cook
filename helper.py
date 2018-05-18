@@ -30,6 +30,24 @@ def parse_time2(ctime):  # yet another variant ;)
     return result
 
 
+def format_time(seconds):
+    result = ""
+    days = seconds // (3600 * 24)
+    if days:
+        result += "%d:" % days
+    rest = seconds % (3600 * 24)
+    hours = rest // 3600
+    if hours + days:
+        result += "%02d:" % hours
+    rest = rest % 3600
+    minutes = rest // 60
+    if minutes + hours + days:
+        result += "%02d:" % minutes
+    seconds = rest % 60
+    result += "%02d" % seconds
+    return result
+
+
 def parse_direction(direction):
     d = direction.strip(' \t\r\n').lover()
     if d in [True, "fwd", "forward", "вперед", "вп", "впер", "в", "1"]:

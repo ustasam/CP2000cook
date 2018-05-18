@@ -101,7 +101,7 @@ class CP2000(object):
         value = helper.default(value, 1)
         if self._freq != value:
             self._freq = value
-            self.write_reg(const.REG_FREQUENCY, int(self.freq * 100 * config.FREQ_CORRECTION))
+            self.write_reg(const.REG_FREQUENCY, int(self.freq * 100 * config.frequency_correction))
             logging.info("cp2000 set freq: " + str(self.freq))
 
     @state.setter
@@ -116,7 +116,7 @@ class CP2000(object):
                 self.write_reg(const.REG_2000, cmd)
 
             elif value == CPState.RUNNING:
-                self.write_reg(const.REG_FREQUENCY, int(self.freq * 100 * config.FREQ_CORRECTION))
+                self.write_reg(const.REG_FREQUENCY, int(self.freq * 100 * config.frequency_correction))
 
                 cmd = const.REG_2000_F_SET0021 | const.REG_2000_F_RUN | self.direction
                 self.write_reg(const.REG_2000,  cmd)

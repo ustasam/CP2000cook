@@ -72,7 +72,7 @@ if __name__ == "__main__":
 
             if instrument is not None or config.emulate_instrument:
 
-                program.main(instrument, args.recipe)
+                program.run_main(instrument, args.recipe)
 
             else:
                 logging.error("Нет связи с прибором.")
