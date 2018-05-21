@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import cp2000
+import config
 
 
 def debug(value):
@@ -49,18 +50,23 @@ def format_time(seconds):
 
 
 def parse_direction(direction):
-    d = direction.strip(' \t\r\n').lover()
-    if d in [True, "fwd", "forward", "вперед", "вп", "впер", "в", "1"]:
+    if type(direction) == str or type(direction) == unicode:
+        d = unicode(direction.strip(' \t\r\n').lower())
+    else:
+        d = direction
+    if d in [cp2000.Direction.FWD, True, 1, u"fwd", u"forward", u"вперед", u"вп", u"впер", u"в", u"1"]:
         return cp2000.Direction.FWD
-    elif d in [False, "rev", "reverse ", "назад", "наз", "н", "2"]:
+
+    elif d in [cp2000.Direction.REV, False, 0, u"rev", u"reverse", u"назад", u"наз", u"н", u"2", u"0"]:
         return cp2000.Direction.REV
+
     else:
         return cp2000.Direction.UNKNOWN
 
-
-def parse_freq(freq):
-    f = freq.strip(' \t\r\n').lover()
-    return float(f)
+#
+# def parse_freq(freq):
+#     f = freq.strip(' \t\r\n').lover()
+#     return float(f)
 
 
 def default(value, default_value):
@@ -68,6 +74,15 @@ def default(value, default_value):
         return default_value
     else:
         return value
+
+
+def console(message):
+    print(message.encode(config.codepage))
+
+
+def unicode_escape(value):
+    value = unicode(value)
+    return value.decode('raw_unicode_escape')
 
 
 try:

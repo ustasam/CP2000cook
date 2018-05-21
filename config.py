@@ -11,8 +11,6 @@ report_file = recipes_folder + "/report.csv"
 
 logfile = recipes_folder + "/recipe.log"
 
-languge = 'ru'
-
 logLevel = logging.DEBUG
 print_debug = True  # print debug messages
 
@@ -43,3 +41,6 @@ gui_update_period = 250  # ms
 
 gladefile = "cp2000.glade"
 cssfile = "cp2000.css"
+
+languge = 'ru'
+codepage = "cp1251"

@@ -19,6 +19,8 @@ class Main_GUI(object):
 
     def __init__(self, instrument=None, recipe=""):
 
+        self.menu = {}
+
         screen = Gdk.Screen.get_default()
         css_provider = Gtk.CssProvider()
         css_provider.load_from_path(config.cssfile)
@@ -81,6 +83,8 @@ class Main_GUI(object):
 
         self.cook = cook.Cook(instrument)
 
+        self.menu_categories = self.builder.get_object("menu_categories")
+        self.menu_items = self.builder.get_object("menu_items")
         self.load_menu()
 
         if recipe:
@@ -92,6 +96,7 @@ class Main_GUI(object):
         self.ui_update_manual()
 
         self.window.show()
+        self.window.show_all()
 
         self.timeout_id = GObject.timeout_add(config.gui_update_period, self.on_timeout, None)
 
@@ -103,25 +108,23 @@ class Main_GUI(object):
 
             args = self.cook.command.args if hasattr(self.cook.command, 'args') else None
 
-            if args and self.cook.command.name == "message":
+            if args and self.cook.command.name == "message_dialog":
                 dialog.infoDialog(args['message'], parent=self.window)
 
-            elif args and self.cook.command.name == "parameter":
+            elif args and self.cook.command.name == "input":
                 res = dialog.textInputDialog(
                             message=args['message'],
                             value=args['default'],
                             title="Введите значение", value_message="Значение",
                             parent=self.window)
 
-                self.cook.command.result = res
-                print res
+                self.cook.command.result = res.decode("utf-8")
 
             cook.pause(self.cook.user_interaction, False)
 
     def on_timeout(self, arg):
 
         self.cook.lock.acquire()
-
         try:
             self.ui_notebook_update()
 
@@ -134,7 +137,7 @@ class Main_GUI(object):
                 self.user_interaction_command()
 
         except Exception as err:
-            logging.error("error on_timeout(): " + str(err))
+            logging.error("error on_timeout(): " + unicode(err))
 
         self.cook.lock.release()
 
@@ -156,10 +159,7 @@ class Main_GUI(object):
 
             args = u""
             for key, value in self.cook.command.args.iteritems():
-                if type(value) == unicode:  # get_command_argument_loc_name
-                    args = args + key + ":" + value + u" , "  # .decode('unicode-escape')
-                else:
-                    args = args + key + ":" + str(value) + u" , "
+                args = args + key + ":" + unicode(value) + u" , "
             if args:
                 args = args[:-3]
 
@@ -227,10 +227,11 @@ class Main_GUI(object):
 
     def openFile(self):
         if cook.State.is_running(self.cook.state):
-            dialog.infoDialog("Сначала остановите текущую операцию.", "Выполняется операция.", self.window)
+            dialog.infoDialog(u"Сначала остановите текущую операцию.", "Выполняется операция.", self.window)
         else:
-            file = dialog.selectFile("Рецепт производства", self.window)
+            file = dialog.selectFile(u"Рецепт производства", self.window)
             if file != "":
+                file = file.decode('utf-8')
                 # self.cook.stop()
                 logging.info("Selected file " + file)
                 self.cook.readRecipe(file)
@@ -243,7 +244,7 @@ class Main_GUI(object):
     def ui_update_recipe_name(self):
         self.ui_recipe.set_text(os.path.basename(self.cook.recipeFile))
         if self.cook.recipeFile == "":
-            self.ui_message.set_text("Откройте рецепт.")
+            self.ui_message.set_text(u"Откройте рецепт.")
             self.ui_recipe_status.set_text("")
         else:
             self.ui_message.set_text(self.cook.name)
@@ -260,11 +261,11 @@ class Main_GUI(object):
     def on_start_clicked(self, widget):
         logging.info("on_start_clicked()")
         if cook.State.is_running(self.cook.state):
-            dialog.infoDialog("Сначала остановите текущую операцию.", "Выполняется операция.", self.window)
+            dialog.infoDialog(u"Сначала остановите текущую операцию.", "Выполняется операция.", self.window)
         elif not self.cook.program:
-            dialog.infoDialog("Не выбран или не открыт рецепт.", "Откройте рецепт.", self.window)
+            dialog.infoDialog(u"Не выбран или не открыт рецепт.", "Откройте рецепт.", self.window)
         else:
-            if dialog.yesNoDialog("Начать выполнение рецепта?", self.window):
+            if dialog.yesNoDialog(u"Начать выполнение рецепта?", self.window):
                 self.cook.program_execute()
                 self.ui_notebook_update()
 
@@ -279,7 +280,7 @@ class Main_GUI(object):
     def on_manual_enable_clicked(self, widget):
 
         if cook.State.is_running(self.cook.state):
-            dialog.infoDialog("Сначала остановите текущую операцию.", "Выполняется операция.", self.window)
+            dialog.infoDialog(u"Сначала остановите текущую операцию.", "Выполняется операция.", self.window)
         else:
             if dialog.yesNoDialog("Выполнить ручную операцию?", self.window):
                 logging.info("on_manual_enable_clicked()")
@@ -296,8 +297,9 @@ class Main_GUI(object):
                 self.ui_notebook_update()
 
     def on_manual_disable_clicked(self, widget):
+        self.cook.state = cook.State.COMPLETED
         self.ui_notebook_update()
-        pass
+        logging.info(u"on_manual_disable_clicked()")
 
     def quit(self):
         self.cook.stop()
@@ -305,27 +307,100 @@ class Main_GUI(object):
         Gtk.main_quit()
 
     def on_menu_quit_activate(self, menuitem):
-        if dialog.yesNoDialog("Выйти из программы?", self.window):
+        if dialog.yesNoDialog(u"Выйти из программы?", self.window):
             self.quit()
 
     def on_main_window_delete_event(self, widget, a):
-        if dialog.yesNoDialog("Выйти из программы?", self.window):
+        if dialog.yesNoDialog(u"Выйти из программы?", self.window):
             self.quit()
         else:
             return True
 
+    # test section
     def on_test1(self, widget):
         cp2000.cp2000_communication_test(self.cook.device.instrument)
 
     def on_test2(self, widget):
         self.cook.reaction_test2()
 
+    # menu section
+    def on_clicked_menu_item(self, button, *args):
+        if len(args) == 0:
+            dialog.infoDialog(u"Не задан файл рецепта.", parent=self.window)
+            return
+
+        file = os.path.join(config.recipes_folder, args[0])
+        if not os.path.isfile(file):
+            file = args[0]
+
+        if config.print_debug:
+            helper.console(file)
+
+        if not os.path.isfile(file):
+            dialog.infoDialog(u"Не найден файл рецепта.", parent=self.window)
+            return
+
+        self.cook.readRecipe(file)
+        self.notebook.set_current_page(self.recipe_page_number)
+
+    def on_clicked_menu_cat(self, button, *args):
+
+        if len(args) == 0:
+            return
+
+        current_menu = self.menu[args[0]]
+
+        for i in self.menu_items.get_children():
+            self.menu_items.remove(i)
+
+        for item in current_menu:
+
+            button_item = Gtk.Button(label=item[0])
+            button_item.set_border_width(3)
+            button_item.connect("clicked", self.on_clicked_menu_item, item[1])
+            self.menu_items.pack_start(button_item, True, True, 0)
+
+        self.window.show_all()
+
     def load_menu(self):
+
         with open(unicode(config.recipes_menu_file, 'utf-8')) as f:
 
-            text = unicode(f.read(), 'utf-8')
+            text = f.read()
 
-            print text
+            try:
+                text = text.decode(config.codepage)
+            except UnicodeDecodeError:
+                pass
+
+            if type(text) != unicode:
+                try:
+                    text = text.decode('utf-8')
+                except UnicodeDecodeError:
+                    pass
+
+            current_category = ""
+
+            for line in text.splitlines():
+                if "=" in line:
+                    if current_category:
+                        name = line.split("=")[0].strip()
+                        file = line.split("=")[1].strip()
+                        self.menu[current_category].append((name, file))
+                else:
+                    current_category = line.strip()
+                    if current_category:
+                        self.menu[current_category] = []
+
+            if config.print_debug:
+                helper.console(repr(self.menu))
+
+        for key, value in self.menu.iteritems():
+
+            button_cat = Gtk.Button(label=key)
+            button_cat.set_border_width(3)
+            button_cat.connect("clicked", self.on_clicked_menu_cat, key)
+            self.menu_categories.pack_start(button_cat, True, True, 0)
 
 
 def run_main(instrument, recipe):

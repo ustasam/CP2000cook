@@ -45,6 +45,7 @@ if __name__ == "__main__":
 
     logging.basicConfig(
         filename=config.logfile,
+        encoding="UTF-8",
         level=config.logLevel,
         datefmt=datefmt,
         format=format)
@@ -63,7 +64,7 @@ if __name__ == "__main__":
                     print("Error: file \"" + args.recipe + "\" not exist.")
                     exit(1)
 
-                args.recipe = args.recipe.decode(sys.getfilesystemencoding()).encode("utf-8")
+                args.recipe = args.recipe.decode(sys.getfilesystemencoding())
 
             config.emulate_instrument = (args.emulate or config.emulate_instrument)
 

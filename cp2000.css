@@ -2,15 +2,6 @@
 
 
 
-
-
-
-
-
-
-
-
-
 * {
     border-radius: 0px;
 }
@@ -37,6 +28,19 @@
 
 #args {
     font-size: 15px;
+}
+
+.measure  {
+    font-size: 48px;
+}
+
+.measure1  {
+    font-size: 40px;
+    color: brown;
+}
+
+.my_menu{
+    font-size: 33px;
 }
 
 .input, .all_button{

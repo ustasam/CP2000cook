@@ -42,19 +42,19 @@ class State(object):
     @staticmethod
     def repr(state):
         if state == State.STOPPED:
-            return "Остановлен"
+            return u"Остановлен"
         elif state == State.RUNNING:
-            return "Выполняется"
+            return u"Выполняется"
         elif state == State.PROGRAM:
-            return "Программа"
+            return u"Программа"
         elif state == State.MANUAL:
-            return "Ручной"
+            return u"Ручной"
         elif state == State.COMPLETED:
-            return "Выполнено"
+            return u"Выполнено"
         elif state == State.UNKNOWN:
-            return "Неизвестно"
+            return u"Неизвестно"
         else:
-            return "Неизвестно"
+            return u"Неизвестно"
 
 
 def paused(pause):
@@ -100,11 +100,15 @@ class Cook(object):
         self.lock = threading.Lock()
 
     def cp_start(self, freq=None, direction=None):
+        self.lock.acquire()
+
         self.device.state = dev.CPState.STOPPED
         self.device.freq = helper.default(freq, self.device.freq)
         self.device.direction = helper.default(direction, self.device.direction)
         self.device.state = dev.CPState.RUNNING
-        logging.info("start(): " + str(self.device.freq) + " " + dev.Direction.repr(self.device.direction))
+        logging.info(u"start(): " + unicode(self.device.freq) + " " + dev.Direction.repr(self.device.direction))
+
+        self.lock.release()
 
     @property
     def name(self):
@@ -161,12 +165,15 @@ class Cook(object):
         return max(0, self.command_end_time - time.time())
 
     def stop(self):
+        self.lock.acquire()
         self.state = State.STOPPED
         self.device.stop()
+        self.lock.release()
+
         pause(self.user_interaction, False)
         pause(self.user_pause, False)
         pause(self.pause, False)
-        logging.info("stop()")
+        logging.info(u"stop()")
 
     def pause_sleep(self, max_duration=2147483647, release_lock=False):
 
@@ -185,7 +192,7 @@ class Cook(object):
             self.user_pause.wait(0.5)
             self.user_interaction.wait(0.5)
 
-            if (max_time >= time.time()):
+            if (max_time <= time.time()):
                 pause(self.pause, False)
 
         if lock_on_return:
@@ -211,11 +218,11 @@ class Cook(object):
         elif node.data == "constant":
             return node.children[0].value
         elif node.data == "identifier":
-            identifier = str(node.children[0].value)
+            identifier = unicode(node.children[0].value)
             if identifier in self.identifiers:
                 return self.identifiers[identifier]
             else:
-                self.errors.append(["error", "expression", "Identifier %s not fount." % identifier])
+                self.errors.append(["error", "expression", u"Identifier %s not fount." % identifier])
                 return 0
 
     def eval(self, node, verification=False):
@@ -238,20 +245,62 @@ class Cook(object):
         self.command_end_time = self.command_start_time
 
         if config.print_debug:
-            print "\n" + "-" * 10 + node.data + "-"*10
-            print "self.identifiers=" + str(self.identifiers)
-            print "self.command=" + str(self.command)
-            print "self.command.args=" + str(self.command.args)
-            print "+" * 10
+            helper.console(u"\n" + "-" * 10 + helper.unicode_escape(node.data) + "-"*10)
+            helper.console(u"self.identifiers=" + helper.unicode_escape(self.identifiers))
+            helper.console(u"self.command=" + helper.unicode_escape(self.command))
+            helper.console(u"self.command.args=" + helper.unicode_escape(self.command.args))
 
-        try:
+        logging.info(u"% " + name + " " + helper.unicode_escape(args))
+
+#        try:
+        if 1 == 1:
             if name == "program_name":
                 self.recipeName = args['name']
-
                 if self.recipeName == "":
-                    self.errors.append(["warinig", name, "Program has no name."])
+                    self.errors.append(["warinig", name, u"Program name is blank."])
+
+            elif name == "end":
+
+                self.stop()
+                self.state = State.COMPLETED
+
+                self.lock.acquire()
+                self.device.stop()
+                self.lock.release()
+
+            elif name == "stop":
+                self.lock.acquire()
+                self.device.stop()
+                self.lock.release()
+
+            elif name == "message":
+                self.message = args['message']
+
+            elif name == "message_dialog":
                 if not verification:
-                    logging.info("% " + name + " " + str(args))
+
+                    self.message = args['message']
+
+                    pause(self.user_interaction)
+                    self.user_interaction.wait()
+
+            elif name == "input":
+                if not verification:
+
+                    pause(self.user_interaction)
+                    self.user_interaction.wait()
+
+                    if type(args['default']) == str or type(args['default']) == unicode:
+                        self.identifiers[args['name']] = self.command.result
+                    else:
+                        self.identifiers[args['name']] = float(self.command.result)
+
+            elif name == "wait":
+                if not verification:
+
+                    pause(self.pause)
+                    self.pause_sleep(max_duration=args['duration'])
+                    pause(self.pause, False)
 
             elif name == "beep":
                 if not verification:
@@ -262,69 +311,41 @@ class Cook(object):
                         if i < (args['count'] - 1):
                             time.sleep(args['pause'])
 
-                    logging.info("% " + name + " " + str(args))
                 else:
                     duration = (args['duration'] * args['count'] + args['pause'] * (args['count'] - 1))
                     if duration > 15:
                         self.errors.append(["warinig", name,
-                                            "Beep duration too long: " + str(duration)])
-
-            elif name == "pause":
-                if not verification:
-
-                    pause(self.pause)
-                    self.pause_sleep(max_duration=args['duration'])
-                    pause(self.pause, False)
-
-                    logging.info("% " + name + " " + str(args))
-
-            elif name == "end":
-                if not verification:
-                    self.stop()
-                    self.state = State.COMPLETED
-                    logging.info("% " + name + " " + str(args))
-
-            elif name == "parameter":
-                if not verification:
-                    pause(self.user_interaction)
-                    self.user_interaction.wait()
-
-                    self.identifiers[args['name']] = self.command.result
-
-                    logging.info("% " + name + " " + str(args))
-
-            elif name == "message":
-                if not verification:
-                    pause(self.user_interaction)
-                    self.user_interaction.wait()
-                    logging.info("% " + name + " " + str(args))
+                                            u"Beep duration too long: " + helper.unicode_escape(duration)])
 
             elif name == "repeat":
-                if not verification:
-                    # for i in node.children:
-                    #     if isinstance(i, Tree):
-                    #         self.eval(i, verification)
-                    logging.info("% " + name + " " + str(args))
+
+                current_command = self.command
+                for i in range(args['count']):
+                    for code_block_node in current_command.children:
+                        if isinstance(code_block_node, Tree):
+                            for cmd in code_block_node.children:
+                                if isinstance(cmd, Tree):
+                                    self.eval(cmd, verification)
 
             elif name == "expression":
 
                 identifier = self.command.children[0].value
                 result = self.expression(self.command.children[1])
-
                 self.identifiers[identifier] = result
 
             elif name == "operate":
-                op_time = helper.parse_time(args['time'])
-                rising_time = helper.parse_time(args['rising_time'])
 
-                direction = helper.parse_direction(dsl.direction(args['direction']))
+                op_time = args['time']
+                rising_time = args['rising_time']
+
+                direction = helper.parse_direction(args['direction'])
 
                 if rising_time > time:
                     self.errors.append(["warinig", name,
                                        messages.rising_time_warinig % (rising_time, op_time)])
                     rising_time = time
 
-                target_rising_time = rising_time + time.time()
+                #  target_rising_time = rising_time + time.time()
                 target_time = op_time + time.time()
 
                 if not verification:
@@ -335,18 +356,16 @@ class Cook(object):
                     #     self.lock.acquire()
                     #     self.lock.release()
 
-                    self.lock.acquire()
                     self.cp_start(freq=args['frequency'], direction=direction)
-                    self.lock.release()
 
                     while self.is_running and (target_time > time.time()):
                         time.sleep(0.1)
                         target_time += self.pause_sleep()
 
-                    logging.info("% " + name + " " + str(args))
-
-        except Exception as err:
-            logging.info("Error eval command: " + name + " " + str(args) + " - " + str(err))
+#        except Exception as err:
+#            logging.info("Error eval command: " + name + " " + unicode(args) + " - " + unicode(err))
+             #self.errors.append(["warinig", name,
+            # todo            u"Beep duration too long: " + helper.unicode_escape(duration)])
 
     def program_execute_t(self, program):
         self.start_time = time.time()
@@ -383,7 +402,7 @@ class Cook(object):
                                               args=(self.program,))
             self.program_t.start()
 
-            logging.info("program_execute()")
+            logging.info(u"program_execute()")
 
     # manual
     def manual_execute_t(self, direction=None, freq=1, execution_time=1, period=0):
@@ -395,21 +414,11 @@ class Cook(object):
         else:
             self.command_end_time = min(self.command_start_time + period, self.end_time)
 
-        self.lock.acquire()
         self.cp_start(freq, direction)
-        self.lock.release()
 
         while self.rest_time and self.is_running:
 
             time.sleep(self.command_rest_time)
-
-            t_suspend = time.time()
-            self.lock.acquire()
-            t_suspend_correction = time.time() - t_suspend
-            self.lock.release()
-
-            self.end_time = self.end_time + t_suspend_correction
-            self.command_end_time = self.command_end_time + t_suspend_correction
 
             if self.rest_time and self.is_running:
                 if period > 0:
@@ -425,11 +434,11 @@ class Cook(object):
         self.lock.release()
 
         self.state = State.COMPLETED
-        logging.info("manual complete")
+        logging.info(u"manual complete")
 
     def manual_execute(self, direction=None, freq=1, execution_time=1, period=0):
         if not self.is_running:
-            logging.info("manual_execute()")
+            logging.info(u"manual_execute()")
 
             self.manual_t = threading.Thread(name='manual_execute',
                                              target=self.manual_execute_t,
@@ -444,32 +453,54 @@ class Cook(object):
         if recipe:
             self.recipeFile = recipe
 
-        with open(unicode(self.recipeFile, 'utf-8')) as f:
+        text = ""
+        with open(self.recipeFile) as f:
 
-            text = unicode(f.read(), 'utf-8')
-            print text
+            text = f.read()
+
+            try:
+                text = text.decode(config.codepage)
+            except UnicodeDecodeError:
+                pass
+
+            if type(text) != unicode:
+                try:
+                    text = text.decode('utf-8')
+                except UnicodeDecodeError:
+                    pass
+
             self.program = None
-
             try:
                 self.program = dsl.parse(text)
             except Exception as err:
-                print("Error in recipe file. \n" + str(err))
-                dialog.infoDialog("Ошибка в разборе файла рецепта. \n" + str(err))
+                message = messages.file_error % helper.unicode_escape(err)
+                helper.console(message)
+                dialog.infoDialog(message, class_name="")
 
-        if self.program is not None and config.print_debug:
-            print(self.program.pretty())
-            print(self.program.children)
+        if config.print_debug and self.program is not None:
+            helper.console(text)
+            print(self.program.pretty().encode(config.codepage))
+            print(unicode(self.program).encode(config.codepage))
 
     # -------------------------------
 
     def reaction_test2(self):
         if not self.is_running:
-            logging.info("reaction_test2(): Begin.")
+            logging.info(u"reaction_test2(): Begin.")
+
             self.cp_start(2, dev.Direction.FWD)
             time.sleep(3)
+
+            self.lock.acquire()
             self.device.stop()
+            self.lock.release()
             time.sleep(1)
+
             self.cp_start(4, dev.Direction.REV)
             time.sleep(3)
+
+            self.lock.acquire()
             self.device.stop()
-            logging.info("reaction_test2(): Complete.")
+            self.lock.release()
+
+            logging.info(u"reaction_test2(): Complete.")

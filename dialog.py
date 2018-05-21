@@ -24,7 +24,7 @@ def selectFile(message="", parent=None, location="."):
     dialog.add_filter(filter_any)
 
     dialog.set_icon_name("applications-graphics")
-    #dialog.get_style_context().add_class("dialog")
+    # dialog.get_style_context().add_class("dialog")
 
     response = dialog.run()
     if response == Gtk.ResponseType.OK:
@@ -34,10 +34,11 @@ def selectFile(message="", parent=None, location="."):
     return result
 
 
-def infoDialog(info, explains="", parent=None):
+def infoDialog(info, explains="", parent=None, class_name="dialog"):
     dialog = Gtk.MessageDialog(parent, 0, Gtk.MessageType.INFO, Gtk.ButtonsType.OK, info)
     dialog.set_icon_name("applications-graphics")
-    dialog.get_style_context().add_class("dialog")
+    if class_name:
+        dialog.get_style_context().add_class(class_name)
     dialog.format_secondary_text(explains)
     dialog.run()
     dialog.destroy()

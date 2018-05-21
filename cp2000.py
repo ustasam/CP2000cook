@@ -16,11 +16,11 @@ class CPState(object):
     @staticmethod
     def repr(state):
         if state == CPState.STOPPED:
-            return "Остановлен"
+            return u"Остановлен"
         elif state == CPState.RUNNING:
-            return "Запущен"
+            return u"Запущен"
         else:
-            return "Неизвестно"
+            return u"Неизвестно"
 
 
 class Direction(object):
@@ -30,11 +30,11 @@ class Direction(object):
     @staticmethod
     def repr(direction):
         if direction == Direction.FWD:
-            return "Вперед"
+            return u"Вперед"
         elif direction == Direction.REV:
-            return "Назад"
+            return u"Назад"
         else:
-            return "Неизвестно"
+            return u"Неизвестно"
 
 
 class CP2000(object):
@@ -49,12 +49,12 @@ class CP2000(object):
             try:
                 self.instrument.write_register(reg, value)
             except (ValueError, IOError, Exception) as err:
-                err_text = "write_reg(): Ошибка передачи данных modbus RS485."
-                logging.error(str(err) + "\r\n" + err_text)
+                err_text = u"write_reg(): Ошибка передачи данных modbus RS485."
+                logging.error(unicode(err) + "\r\n" + err_text)
 
-            logging.info("write_reg(): " + hex(reg) + ", value= " + helper.debug(value))
+            logging.info(u"write_reg(): " + hex(reg) + u", value= " + helper.debug(value))
         else:
-            logging.info("Emulated write_reg(): " + hex(reg) + ", value= " + helper.debug(value))
+            logging.info(u"Emulated write_reg(): " + hex(reg) + u", value= " + helper.debug(value))
 
     def read_reg(self, reg):
         result = 0xFFFF
@@ -62,12 +62,13 @@ class CP2000(object):
             try:
                 result = self.instrument.read_register(reg)
             except (ValueError, IOError, Exception) as err:
-                err_text = "read_reg(): Ошибка передачи данных modbus RS485."
-                logging.error(str(err) + "\r\n" + err_text)
+                err_text = u"read_reg(): Ошибка передачи данных modbus RS485."
+                logging.error(unicode(err) + "\r\n" + err_text)
 
-            logging.info("read_reg(): " + hex(reg) + ", value= " + helper.debug(result))
+            logging.info(u"read_reg(): " + hex(reg) + u", value= " + helper.debug(result))
         else:
-            logging.info("Emulated read_reg(): " + hex(reg))
+            pass
+            # logging.info(u"Emulated read_reg(): " + hex(reg))
         return result
 
     @property
@@ -88,7 +89,7 @@ class CP2000(object):
         if self._direction != value:
             self._direction = value
             self.restart()
-            logging.info("cp2000 set direction: " + str(self.direction))
+            logging.info(u"cp2000 set direction: " + unicode(self.direction))
 
     def reverse(self):
         if self.direction == Direction.FWD:
@@ -102,11 +103,12 @@ class CP2000(object):
         if self._freq != value:
             self._freq = value
             self.write_reg(const.REG_FREQUENCY, int(self.freq * 100 * config.frequency_correction))
-            logging.info("cp2000 set freq: " + str(self.freq))
+            logging.info(u"cp2000 set freq: " + unicode(self.freq))
 
     @state.setter
     def state(self, value):
         value = helper.default(value, CPState.STOPPED)
+
         if self._state != value:
             self._state = value
             self.cp_err_reset()
@@ -122,9 +124,13 @@ class CP2000(object):
                 self.write_reg(const.REG_2000,  cmd)
 
             logging.info(
-                "state(): freq=" + str(self.freq) +
-                ", direction=" + Direction.repr(self.direction) +
-                ", state=" + CPState.repr(value))
+                u"state(): freq=" + unicode(self.freq) +
+                u", direction=" + Direction.repr(self.direction) +
+                u", state=" + CPState.repr(value))
+        else:
+            if value == CPState.STOPPED:
+                self.write_reg(const.REG_2000,
+                               const.REG_2000_F_SET0021 | const.REG_2000_F_STOP | self.direction)
 
     def start(self):
         self.state = CPState.RUNNING
@@ -184,7 +190,8 @@ class CP2000(object):
             # inst.debug = config.minimalmodbus_debug
             inst.read_register(const.REG_FREQUENCY_COMMAND)
         except (ValueError, IOError, Exception) as err:
-            logging.error("get_instrument(): " + "Ошибка соединение RS485 с контроллером CP2000. " + str(err))
+            logging.error(u"get_instrument(): " +
+                          u"Ошибка соединение RS485 с контроллером CP2000. " + unicode(err))
             return None
         else:
             return inst
@@ -192,7 +199,7 @@ class CP2000(object):
 
 def cp2000_communication_test(instrument=None):
     time.sleep(0.1)
-    logging.info("cp2000_communication_test()")
+    logging.info(u"cp2000_communication_test()")
 
     if instrument is None:
         inst = CP2000.get_instrument(config.PORT, config.ADDRESS, config.minimalmodbus_mode)
@@ -200,12 +207,12 @@ def cp2000_communication_test(instrument=None):
         inst = instrument
 
     if inst is not None:
-        logging.info("Соединение с контроллером CP2000 по RS485 установленно.")
+        logging.info(u"Соединение с контроллером CP2000 по RS485 установленно.")
 
         inst.debug = True
 
         result = inst.read_register(const.REG_FREQUENCY_COMMAND)
-        logging.info("Read REG_FREQUENCY_COMMAND - " + helper.debug(result))
+        logging.info(u"Read REG_FREQUENCY_COMMAND - " + helper.debug(result))
 
         inst.write_register(0x2002, 0b10)
         inst.write_register(0x2001, 100)  # Hz * 100 = Hz00
@@ -215,13 +222,13 @@ def cp2000_communication_test(instrument=None):
         time.sleep(5)
 
         result = inst.read_register(0x2102)
-        logging.info("Read 0x2102 - " + helper.debug(result))
+        logging.info(u"Read 0x2102 - " + helper.debug(result))
 
         result = inst.read_register(0x2103)
-        logging.info("Read 0x2103 - " + helper.debug(result))
+        logging.info(u"Read 0x2103 - " + helper.debug(result))
 
         result = inst.read_register(0x210C)
-        logging.info("Read 0x210C - " + helper.debug(result))
+        logging.info(u"Read 0x210C - " + helper.debug(result))
 
         inst.write_register(0x2000, 0b10011111101001)
         logging.info(hex(0x2000))
@@ -229,6 +236,6 @@ def cp2000_communication_test(instrument=None):
         inst.debug = config.minimalmodbus_debug
         if instrument is None:
             inst.serial.close()
-        logging.info("cp2000_communication_test(): Выполнен.")
+        logging.info(u"cp2000_communication_test(): Выполнен.")
     else:
-        logging.info("cp2000_communication_test(): Ошибка соединение RS485 с контроллером CP2000.")
+        logging.info(u"cp2000_communication_test(): Ошибка соединение RS485 с контроллером CP2000.")
