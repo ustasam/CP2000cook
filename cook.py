@@ -402,7 +402,7 @@ class Cook(object):
                                               args=(self.program,))
             self.program_t.start()
 
-            logging.info(u"program_execute()")
+            logging.info(u"program_execute() " + self.recipeFile)
 
     # manual
     def manual_execute_t(self, direction=None, freq=1, execution_time=1, period=0):

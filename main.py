@@ -22,18 +22,19 @@ if __name__ == "__main__":
 
     main_parser = subparsers.add_parser('main', help='GUI program')
     main_parser.add_argument('--recipe', '-r', action='store', help='Recipe path')
-    main_parser.add_argument('--emulate', action='store_true',
-                             help='Emulate instrument')
+    main_parser.add_argument('--emulate', action='store_true', help='Emulate instrument')
+    main_parser.add_argument('--datadir', action='store', help='Main data directory')
+    main_parser.add_argument('--showdebug', action='store_true', help='Print debug messages')
 
-    test_parser = subparsers.add_parser('cook', help='Cook recipe')
-    test_parser.add_argument('--recipe', '-r', action='store', help='Recipe path')
-    test_parser.add_argument('--parameter', '-p', action='store', help='Recipe parameter')
+    # test_parser = subparsers.add_parser('cook', help='Cook recipe')
+    # test_parser.add_argument('--recipe', '-r', action='store', help='Recipe path')
+    # test_parser.add_argument('--parameter', '-p', action='store', help='Recipe parameter')
 
-    reglist_parser = subparsers.add_parser('reglist', help='Print main cp2000 registers')
+    # reglist_parser = subparsers.add_parser('reglist', help='Print main cp2000 registers')
 
     test_parser = subparsers.add_parser('cp2000_test', help='Make test operation on cp2000')
 
-    parser.add_argument('--version', '-v', action='version', version='%(prog)s ' + "1.0a")
+    parser.add_argument('--version', '-v', action='version', version='%(prog)s ' + "1.1a")
 
     args = parser.parse_args()
 
@@ -59,27 +60,36 @@ if __name__ == "__main__":
 
     if args.command == "main":
 
-            if args.recipe is not None:
-                if not os.path.isfile(args.recipe):
-                    print("Error: file \"" + args.recipe + "\" not exist.")
-                    exit(1)
-
-                args.recipe = args.recipe.decode(sys.getfilesystemencoding())
-
+            config.print_debug = args.showdebug
             config.emulate_instrument = (args.emulate or config.emulate_instrument)
 
-            instrument = None if config.emulate_instrument else \
-                cp2000.CP2000.get_instrument(config.PORT, config.ADDRESS, config.minimalmodbus_mode)
+            if args.recipe is not None:
+                if not os.path.isfile(args.recipe):
+                    print("Error: File \"" + args.recipe + "\" is not exist.")
+                    exit(1)
+                args.recipe = args.recipe.decode(sys.getfilesystemencoding())
 
-            if instrument is not None or config.emulate_instrument:
+            if args.datadir is not None:
+                if not os.path.isdir(args.datadir):
+                    print("Error: Directory \"" + args.datadir + "\" is not exist.")
+                    exit(1)
 
-                program.run_main(instrument, args.recipe)
+                config.config_files(args.datadir.decode(sys.getfilesystemencoding()).rstrip('/\\'))
 
+            if config.emulate_instrument:
+                instrument = None
             else:
-                logging.error("Нет связи с прибором.")
-                dialog.infoDialog(
-                    "Нет связи с прибором.", explains="Не удается установить соединение с прибором. " +
-                    "Проверьте целостность кабеля и настройки программы.")
+                instrument = cp2000.CP2000.get_instrument(config.PORT,
+                                                          config.ADDRESS,
+                                                          config.minimalmodbus_mode)
+                if not instrument:
+                    logging.error("Нет связи с прибором.")
+                    dialog.infoDialog(
+                        "Нет связи с прибором.", explains="Не удается установить соединение с прибором. " +
+                        "Проверьте целостность кабеля и настройки программы.")
+                    exit(1)
+
+            program.run_main(instrument, args.recipe)
 
     elif args.command == "cp2000_test":
         cp2000.cp2000_communication_test()

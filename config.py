@@ -1,18 +1,26 @@
 # -*- coding: utf-8 -*-
+
 """Defaults."""
 
 import minimalmodbus
 import serial
 import logging
 
-recipes_folder = "./recipe.example"
-recipes_menu_file = recipes_folder + "/recipe.menu"
-report_file = recipes_folder + "/report.csv"
 
-logfile = recipes_folder + "/recipe.log"
+def config_files(dir):
+    global recipes_menu_file, report_file, logfile, data_dir
+
+    data_dir = dir
+    recipes_menu_file = dir + u"/recipe.menu"
+    report_file = dir + u"/report.csv"
+    logfile = dir + u"/recipe.log"
+
+
+config_files("./data")  # data_dir
+
 
 logLevel = logging.DEBUG
-print_debug = True  # print debug messages
+print_debug = False  # print debug messages
 
 
 PORT = '/dev/ttyUSB0'

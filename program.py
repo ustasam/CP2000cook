@@ -3,6 +3,7 @@
 import os
 import logging
 import time
+import math
 
 import helper
 import config
@@ -83,7 +84,6 @@ class Main_GUI(object):
 
         self.cook = cook.Cook(instrument)
 
-        self.menu_categories = self.builder.get_object("menu_categories")
         self.menu_items = self.builder.get_object("menu_items")
         self.load_menu()
 
@@ -329,7 +329,11 @@ class Main_GUI(object):
             dialog.infoDialog(u"Не задан файл рецепта.", parent=self.window)
             return
 
-        file = os.path.join(config.recipes_folder, args[0])
+        if args[0] == "--back--":
+            self.fill_menu()
+            return
+
+        file = os.path.join(config.data_dir, args[0])
         if not os.path.isfile(file):
             file = args[0]
 
@@ -345,62 +349,129 @@ class Main_GUI(object):
 
     def on_clicked_menu_cat(self, button, *args):
 
+        for i in self.menu_items.get_children():
+            self.menu_items.remove(i)
+
         if len(args) == 0:
             return
 
         current_menu = self.menu[args[0]]
 
+        # calculate position
+        count = len(current_menu) + 1  # + Back
+        size_height = math.ceil(math.sqrt(count))
+        size_width = math.ceil(count / size_height)
+
+        self.menu_items.height = size_height
+        self.menu_items.width = size_width
+
+        for pos, item in enumerate(current_menu):
+
+            label = Gtk.Label(label=item[0])
+            label.set_line_wrap(True)
+            label.line_wrap_mode = Gtk.WrapMode.WORD_CHAR
+
+            button_item = Gtk.Button()
+            button_item.add(label)
+            button_item.set_border_width(8)
+            button_item.connect("clicked", self.on_clicked_menu_item, item[1])
+            button_item.get_style_context().add_class("menu_button_item")
+
+            left = pos % size_width + 1
+            top = math.floor(pos / size_width) + 1
+            self.menu_items.attach(button_item, left, top, 1, 1)
+
+        # Back button
+        label = Gtk.Label(label="Назад")
+        label.set_line_wrap(True)
+        label.line_wrap_mode = Gtk.WrapMode.WORD_CHAR
+
+        button_item = Gtk.Button()
+        button_item.add(label)
+        button_item.set_border_width(8)
+        button_item.connect("clicked", self.on_clicked_menu_item, "--back--")
+        button_item.get_style_context().add_class("menu_button_item_back")
+
+        left = len(current_menu) % size_width + 1
+        top = math.floor(len(current_menu) / size_width) + 1
+
+        self.menu_items.attach(button_item, left, top, 1, 1)
+
+        self.window.show_all()
+
+    def fill_menu(self):
+
         for i in self.menu_items.get_children():
             self.menu_items.remove(i)
 
-        for item in current_menu:
+        # calculate position
+        count = len(self.menu)
+        size_height = math.ceil(math.sqrt(count))
+        size_width = math.ceil(count / size_height)
 
-            button_item = Gtk.Button(label=item[0])
-            button_item.set_border_width(3)
-            button_item.connect("clicked", self.on_clicked_menu_item, item[1])
-            self.menu_items.pack_start(button_item, True, True, 0)
+        self.menu_items.height = size_height
+        self.menu_items.width = size_width
+        for pos, key in enumerate(self.menu["catigories"]):
+
+            label = Gtk.Label(label=key)
+            label.set_line_wrap(True)
+            label.line_wrap_mode = Gtk.WrapMode.WORD_CHAR
+
+            button_cat = Gtk.Button()
+            button_cat.add(label)
+            button_cat.set_border_width(8)
+            button_cat.connect("clicked", self.on_clicked_menu_cat, key)
+            button_cat.get_style_context().add_class("menu_button_cat")
+
+            left = pos % size_width + 1
+            top = math.floor(pos / size_width) + 1
+            self.menu_items.attach(button_cat, left, top, 1, 1)
 
         self.window.show_all()
 
     def load_menu(self):
 
-        with open(unicode(config.recipes_menu_file, 'utf-8')) as f:
+        with open(config.recipes_menu_file) as f:
 
-            text = f.read()
+            text = ""
+            file_text = f.read()
 
             try:
-                text = text.decode(config.codepage)
+                text = file_text.decode('utf-8')
             except UnicodeDecodeError:
                 pass
 
-            if type(text) != unicode:
+            if not text:
                 try:
-                    text = text.decode('utf-8')
+                    text = file_text.decode(config.codepage)
                 except UnicodeDecodeError:
                     pass
 
-            current_category = ""
+            if text:
+                current_category = ""
+                self.menu["catigories"] = []
 
-            for line in text.splitlines():
-                if "=" in line:
-                    if current_category:
-                        name = line.split("=")[0].strip()
-                        file = line.split("=")[1].strip()
-                        self.menu[current_category].append((name, file))
-                else:
-                    current_category = line.strip()
-                    if current_category:
-                        self.menu[current_category] = []
+                for line in text.splitlines():
+                    line = line.strip()
+                    if line and not line.startswith("#"):
+                        if "=" in line:
+                            if current_category:
+                                name = line.split("=")[0].strip()
+                                file = line.split("=")[1].strip()
+                                self.menu[current_category].append((name, file))
+                        else:
+                            current_category = line.strip()
+                            if current_category:
+                                self.menu[current_category] = []
+                                self.menu["catigories"].append(current_category)
 
-            if config.print_debug:
-                helper.console(repr(self.menu))
+                if config.print_debug:
+                    helper.console(repr(self.menu))
 
-        for key, value in self.menu.iteritems():
+                self.fill_menu()
 
-            button_cat = Gtk.Button(label=key)
-            button_cat.set_border_width(3)
-            button_cat.connect("clicked", self.on_clicked_menu_cat, key)
-            self.menu_categories.pack_start(button_cat, True, True, 0)
+            else:
+                logging.info("Error menu file is empty")
 
 
 def run_main(instrument, recipe):

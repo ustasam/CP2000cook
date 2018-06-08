@@ -51,6 +51,31 @@
     font-size: 35px;
 }
 
+.menu_button_cat {
+    border-radius: 12px;
+    border-width: 4px;
+    font-size: 42px;
+}
+
+.menu_button_cat {
+    border-radius: 12px;
+    border-width: 4px;
+    font-size: 42px;
+}
+
+.menu_button_item {
+    border-radius: 12px;
+    border-width: 4px;
+    font-size: 42px;
+}
+
+.menu_button_item_back{
+    border-radius: 12px;
+    border-width: 8px;
+    font-size: 50px;
+    color: #781F3E;
+}
+
 .notebook_label {
     border-width: 0px;
     font-size: 25px;
