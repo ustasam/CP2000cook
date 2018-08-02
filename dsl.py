@@ -3,6 +3,9 @@
 from lark import Lark
 import re
 
+# Lark - a modern parsing library for Python
+# https://github.com/lark-parser/lark
+
 gramamr = u'''
 
     start: instruction+
@@ -23,6 +26,10 @@ gramamr = u'''
         | ("Гудок"i | "Beep"i | "Звук"i | "Sound"i) [INT][" "INT][" "INT][" "INT] -> beep
         | ("Операция"i | "Operate"i) VALUE ESCAPED_STRING CTIME [" "CTIME] -> operate
         | ("Повторить"i |"Repeat"i) VALUE code_block -> repeat
+
+        | ("ОтчетПриход"i |"ReportComing"i) ESCAPED_STRING ESCAPED_STRING VALUE -> coming
+        | ("ОтчетРасход"i |"ReportConsumption"i) ESCAPED_STRING ESCAPED_STRING VALUE -> consumptions
+
         | IDENTIFIER "=" sum -> expression
 
      ?sum: product
@@ -88,6 +95,11 @@ command_description = {
             ('frequency', 'Частота', 10), ('direction', 'Направление', "Вперед"),
             ('time', 'Время', 5), ('rising_time', 'Время возрастания', 1))},
     'repeat': {'loc_name': "Повторить", 'arguments': (('count', 'Число раз', 1),)},
+
+    'coming': {'loc_name': "ОтчетПриход", 'arguments': (
+        ('report_name', 'Имя отчета', ""), ('value_name', 'Имя прихода', ""))},
+    'consumptions': {'loc_name': "ОтчетРасход", 'arguments': (
+        ('report_name', 'Имя отчета', ""), ('value_name', 'Имя расхода', ""))},
 
     'expression': {'loc_name': "Выражение", 'arguments': ()}
 }

@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 
+# module not realised
+
 import config
 
 rising_time_warinig = u"Rising time %s grate then total time %s."

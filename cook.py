@@ -364,7 +364,7 @@ class Cook(object):
 
 #        except Exception as err:
 #            logging.info("Error eval command: " + name + " " + unicode(args) + " - " + unicode(err))
-             #self.errors.append(["warinig", name,
+            # self.errors.append(["warinig", name,
             # todo            u"Beep duration too long: " + helper.unicode_escape(duration)])
 
     def program_execute_t(self, program):
