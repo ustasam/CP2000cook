@@ -2,6 +2,17 @@
 
 import cp2000
 import config
+import io
+import datetime
+
+
+def report_write(report_name, value_name, value):
+    with io.open(config.report_file, 'a+', encoding='utf-8') as f:
+        # f = open(config.report_file, "w+")
+        f.write(unicode(datetime.datetime.now().strftime("%H:%M:%S on %d.%m.%Y") + ";"))
+        f.write(unicode(report_name + ";" + value_name + ";" + value))
+        f.write(unicode("\n"))
+        # f.close()
 
 
 def debug(value):

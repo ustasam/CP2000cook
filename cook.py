@@ -362,6 +362,17 @@ class Cook(object):
                         time.sleep(0.1)
                         target_time += self.pause_sleep()
 
+            elif name == "report":
+
+                value = args['value']
+                if value in self.identifiers:
+                    value = self.identifiers[value]
+
+                # helper.console(args['report_name'] + ";" + args['value_name'] + ";" + unicode(value))
+
+                helper.report_write(args['report_name'], args['value_name'], value)
+
+
 #        except Exception as err:
 #            logging.info("Error eval command: " + name + " " + unicode(args) + " - " + unicode(err))
             # self.errors.append(["warinig", name,

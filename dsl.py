@@ -27,8 +27,7 @@ gramamr = u'''
         | ("Операция"i | "Operate"i) VALUE ESCAPED_STRING CTIME [" "CTIME] -> operate
         | ("Повторить"i |"Repeat"i) VALUE code_block -> repeat
 
-        | ("ОтчетПриход"i |"ReportComing"i) ESCAPED_STRING ESCAPED_STRING VALUE -> coming
-        | ("ОтчетРасход"i |"ReportConsumption"i) ESCAPED_STRING ESCAPED_STRING VALUE -> consumptions
+        | ("Отчет"i |"Report"i) ESCAPED_STRING ESCAPED_STRING [" "VALUE | ESCAPED_STRING] -> report
 
         | IDENTIFIER "=" sum -> expression
 
@@ -80,26 +79,34 @@ command_description = {
 
     'message': {'loc_name': "Сообщение", 'arguments': (('message', 'Сообщение', ""),)},
     'message_dialog': {'loc_name': "Окно сообщения", 'arguments': (('message', 'Сообщение', ""),)},
+
     'input': {'loc_name': "Окно ввода", 'arguments': (
         ('name', 'Имя', ""),
-        ('default', 'Начальное', ""), ('message', 'Сообщение', "Введите значение"))},
+        ('default', 'Начальное', ""),
+        ('message', 'Сообщение', "Введите значение"))},
 
     'wait': {'loc_name': "Ожидание", 'arguments': (
         ('duration', 'Продолжительность', 1),
         ('message', 'Сообщение', ""))},
 
     'beep': {'loc_name': "Гудок", 'arguments': (
-        ('frequency', 'Частота', 3000), ('duration', 'Продолжительность', 1),
-        ('count', 'Число раз', 1), ('pause', 'Длина паузы', 1))},
+        ('frequency', 'Частота', 3000),
+        ('duration', 'Продолжительность', 1),
+        ('count', 'Число раз', 1),
+        ('pause', 'Длина паузы', 1))},
+
     'operate': {'loc_name': "Операция", 'arguments': (
-            ('frequency', 'Частота', 10), ('direction', 'Направление', "Вперед"),
-            ('time', 'Время', 5), ('rising_time', 'Время возрастания', 1))},
+            ('frequency', 'Частота', 10),
+            ('direction', 'Направление', "Вперед"),
+            ('time', 'Время', 5),
+            ('rising_time', 'Время возрастания', 1))},
+
     'repeat': {'loc_name': "Повторить", 'arguments': (('count', 'Число раз', 1),)},
 
-    'coming': {'loc_name': "ОтчетПриход", 'arguments': (
-        ('report_name', 'Имя отчета', ""), ('value_name', 'Имя прихода', ""))},
-    'consumptions': {'loc_name': "ОтчетРасход", 'arguments': (
-        ('report_name', 'Имя отчета', ""), ('value_name', 'Имя расхода', ""))},
+    'report': {'loc_name': "Отчет", 'arguments': (
+        ('report_name', 'Имя отчета', ""),
+        ('value_name', 'Имя параметра', ""),
+        ('value', 'Значение параметра', ""))},
 
     'expression': {'loc_name': "Выражение", 'arguments': ()}
 }
