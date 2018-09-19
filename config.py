@@ -52,3 +52,17 @@ cssfile = "cp2000.css"
 
 languge = 'ru'
 codepage = "cp1251"
+
+
+default_direction = "clockwise"
+
+reverse_direction = True  # forward to backward
+
+rpm = True  # revolutions per minute otherwise per second
+
+# stop_instrument = True  # stop instrument on time complete
+
+max_rpm = 1500
+
+
+#FRENIC 5000G11

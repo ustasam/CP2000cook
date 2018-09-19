@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 """CP2000 constants."""
 
+REG_2000_REV_DIRECTION = True
+
 # CP2000 registers CP2000_UM_EN_20170602 page 453
 REG_2000 =           0x2000
 REG_2000_F_NO =      0b00000000

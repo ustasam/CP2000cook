@@ -14,17 +14,24 @@ gramamr = u'''
 
     instruction: \
           ("Имя"i | "Name"i | "Заголовок"i) ESCAPED_STRING -> program_name
+
         | ("Конец"i | "End"i) -> end
+
         | ("Остановить"i | "Stop"i) -> stop
+
+        | ("Заголовок"i | "Caption"i) ESCAPED_STRING -> caption
+
         | ("Сообщение"i | "Message"i) ESCAPED_STRING -> message
 
-        | ("ОкноСообщения"i | "MessageDialog"i) ESCAPED_STRING -> message_dialog
         | ("ОкноВвода"i | "InputDialog"i) IDENTIFIER [" "VALUE | ESCAPED_STRING] [" "ESCAPED_STRING]  -> input
+
         | ("Ожидание"i | "Wait"i | "Пауза"i | "Pause"i | \
             "Подтверждение"i | "Confirmation"i) [CTIME] [ESCAPED_STRING] -> wait
 
         | ("Гудок"i | "Beep"i | "Звук"i | "Sound"i) [INT][" "INT][" "INT][" "INT] -> beep
-        | ("Операция"i | "Operate"i) VALUE ESCAPED_STRING CTIME [" "CTIME] -> operate
+
+        | ("Операция"i | "Operate"i) VALUE CTIME [" "ESCAPED_STRING] [" "CTIME] -> operate
+
         | ("Повторить"i |"Repeat"i) VALUE code_block -> repeat
 
         | ("Отчет"i |"Report"i) ESCAPED_STRING ESCAPED_STRING [" "VALUE | ESCAPED_STRING] -> report
@@ -77,36 +84,41 @@ command_description = {
     'end': {'loc_name': "Конец", 'arguments': ()},
     'stop': {'loc_name': "Остановить", 'arguments': ()},
 
-    'message': {'loc_name': "Сообщение", 'arguments': (('message', 'Сообщение', ""),)},
-    'message_dialog': {'loc_name': "Окно сообщения", 'arguments': (('message', 'Сообщение', ""),)},
+    'caption': {'loc_name': "Сообщение", 'arguments': (('message', 'Текст заголовка', ""),)},
+    'message': {'loc_name': "Окно сообщения", 'arguments': (('message', 'Сообщение', ""),)},
 
     'input': {'loc_name': "Окно ввода", 'arguments': (
-        ('name', 'Имя', ""),
-        ('default', 'Начальное', ""),
-        ('message', 'Сообщение', "Введите значение"))},
+            ('name', 'Имя', ""),
+            ('default', 'Начальное', ""),
+            ('message', 'Сообщение', "Введите значение")
+        )},
 
     'wait': {'loc_name': "Ожидание", 'arguments': (
-        ('duration', 'Продолжительность', 1),
-        ('message', 'Сообщение', ""))},
+            ('duration', 'Продолжительность', 1),
+            ('message', 'Сообщение', "")
+        )},
 
     'beep': {'loc_name': "Гудок", 'arguments': (
-        ('frequency', 'Частота', 3000),
-        ('duration', 'Продолжительность', 1),
-        ('count', 'Число раз', 1),
-        ('pause', 'Длина паузы', 1))},
+            ('frequency', 'Частота', 3000),
+            ('duration', 'Продолжительность', 1),
+            ('count', 'Число раз', 1),
+            ('pause', 'Длина паузы', 1)
+        )},
 
     'operate': {'loc_name': "Операция", 'arguments': (
             ('frequency', 'Частота', 10),
-            ('direction', 'Направление', "Вперед"),
             ('time', 'Время', 5),
-            ('rising_time', 'Время возрастания', 1))},
+            ('rising_time', 'Время возрастания', 1),
+            ('direction', 'Направление', "Вперед")
+        )},
 
     'repeat': {'loc_name': "Повторить", 'arguments': (('count', 'Число раз', 1),)},
 
     'report': {'loc_name': "Отчет", 'arguments': (
-        ('report_name', 'Имя отчета', ""),
-        ('value_name', 'Имя параметра', ""),
-        ('value', 'Значение параметра', ""))},
+            ('report_name', 'Имя отчета', ""),
+            ('value_name', 'Имя параметра', ""),
+            ('value', 'Значение параметра', "")
+        )},
 
     'expression': {'loc_name': "Выражение", 'arguments': ()}
 }
